@@ -33,9 +33,12 @@ function say(text: string) {
   // Voz básica del proveedor; más adelante se reemplaza por Piper local.
   return `<Say language="es-ES" voice="woman">${xml(text.slice(0, 700))}</Say>`;
 }
-function listen(prompt: string) {
+function listen(prompt: string, trialSecret: string | null = null) {
   const base = process.env.TWILIO_PUBLIC_BASE_URL?.replace(/\/$/, "");
-  const action = base ? `${base}/api/telephony/twilio` : "";
+  const path = "/api/telephony/twilio";
+  // Try out Voice puede recuperar TwiML a través de un intermediario que no
+  // conserva la firma. Solo en el modo de prueba preservamos una clave efímera.
+  const action = base ? base + path + (trialSecret ? "?trial_key=" + encodeURIComponent(trialSecret) : "") : "";
   return twiml(`<Gather input="speech" language="es-ES" speechTimeout="auto" timeout="6" actionOnEmptyResult="true" method="POST" action="${xml(action)}">${say(prompt)}</Gather>${say("No recibí respuesta. Terminamos esta llamada de prueba. Hasta luego.")}<Hangup/>`);
 }
 
@@ -64,6 +67,18 @@ function describeAdditions(before: CartItem[], after: CartItem[]): string | null
   return additions.length ? `Añadí ${additions.join(" y ")}` : null;
 }
 
+/**
+ * Solo para pruebas temporales: una URL difícil de adivinar sustituye la firma
+ * cuando el intermediario de Try out Voice no la envía. No habilitar en producción.
+ * Se exige un secreto aleatorio de 32 bytes (64 caracteres hexadecimales).
+ */
+function validTrialSecret(actual: string, expected: string | undefined): boolean {
+  if (!expected || !/^[a-f0-9]{64}$/i.test(expected) || !/^[a-f0-9]{64}$/i.test(actual)) return false;
+  const incoming = Buffer.from(actual.toLowerCase(), "utf8");
+  const stored = Buffer.from(expected.toLowerCase(), "utf8");
+  return timingSafeEqual(incoming, stored);
+}
+
 function cleanup() {
   const now = Date.now();
   for (const [id, session] of sessions) {
@@ -89,12 +104,18 @@ export async function POST(request: NextRequest) {
   const params = new URLSearchParams(raw);
   const externalUrl = publicBase + "/api/telephony/twilio" + request.nextUrl.search;
   const providedSignature = request.headers.get("x-twilio-signature") ?? "";
-  if (!providedSignature) {
+  const trialSecret = request.nextUrl.searchParams.get("trial_key") ?? "";
+  const usingTrial = !providedSignature &&
+    process.env.TWILIO_TRIAL_MODE === "enabled" &&
+    validTrialSecret(trialSecret, process.env.TWILIO_TRIAL_WEBHOOK_SECRET);
+  if (!providedSignature && !usingTrial) {
     // No registrar el token, el valor de la firma, los teléfonos ni el cuerpo del webhook.
     console.warn("[Twilio webhook] Firma ausente; solicitud rechazada.");
     return new NextResponse("Firma Twilio inválida", { status: 403 });
   }
-  if (!validSignature(externalUrl, params, providedSignature, token)) {
+  // Si el request trae una firma, SIEMPRE la verificamos. Una firma equivocada
+  // no se puede eludir incluyendo la clave de prueba.
+  if (providedSignature && !validSignature(externalUrl, params, providedSignature, token)) {
     // Solo se registran indicadores booleanos para distinguir URL de firma incorrecta.
     // Una coincidencia con una variante no la convierte automáticamente en confiable.
     const urlWithSlash = publicBase + "/api/telephony/twilio/" + request.nextUrl.search;
@@ -121,10 +142,12 @@ export async function POST(request: NextRequest) {
   if (!session) {
     session = { cart: [], pending: null, history: [], turns: 0, updatedAt: Date.now() };
     sessions.set(callSid, session);
-    return listen("Hola, soy OrderVoice, asistente de Pizza Demo. Esta es una llamada de prueba. ¿Qué deseas ordenar?");
+    if (!speech) {
+      return listen("Hola, soy OrderVoice, asistente de Pizza Demo. Esta es una llamada de prueba. ¿Qué deseas ordenar?", usingTrial ? trialSecret : null);
+    }
   }
   session.updatedAt = Date.now();
-  if (!speech) return listen("No te escuché bien. Por favor, repite tu pedido.");
+  if (!speech) return listen("No te escuché bien. Por favor, repite tu pedido.", usingTrial ? trialSecret : null);
   if (session.turns >= MAX_TURNS) {
     sessions.delete(callSid);
     return twiml(say("Hemos llegado al límite de esta llamada de prueba. Gracias por comunicarte.") + "<Hangup/>");
@@ -161,7 +184,7 @@ export async function POST(request: NextRequest) {
       sessions.delete(callSid);
       return twiml(say(reply) + "<Hangup/>");
     }
-    return listen(reply);
+    return listen(reply, usingTrial ? trialSecret : null);
   } catch (error) {
     console.error("La llamada de prueba no pudo procesar el turno:", error);
     sessions.delete(callSid);
