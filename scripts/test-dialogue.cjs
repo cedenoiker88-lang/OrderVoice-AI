@@ -72,4 +72,20 @@ say("Quiero una pizza hawaiana");
 say("Mediana");
 assert.equal(cart[0].productId, "hawaiana-mediana");
 assert.equal(menu.calculateTotal(cart), 1000);
-console.log("OK: aclaraciones con memoria, correcciones y carrito sin duplicados");
+// Conversación real de voz reportada: debe conservar el sabor al oír el tamaño.
+pending = null; cart = [];
+say("Pizza de pepperoni.");
+r = say("Mediana, mediana.");
+assert.equal(pending, null);
+assert.deepEqual(cart, [{ productId: "pepperoni-mediana", quantity: 1 }]);
+assert.equal(menu.calculateTotal(cart), 900);
+
+// Los reconocedores de voz suelen escribir "peperoni" con una sola p.
+pending = null; cart = [];
+say("Quiero una pizza familiar");
+r = say("De peperoni.");
+assert.equal(pending, null);
+assert.deepEqual(cart, [{ productId: "pepperoni-familiar", quantity: 1 }]);
+assert.equal(menu.calculateTotal(cart), 1400);
+
+console.log("OK: aclaraciones con memoria, transcripciones de voz y carrito sin duplicados");
