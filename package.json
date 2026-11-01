@@ -11,7 +11,8 @@
     "test:ollama": "node scripts/test-ollama.cjs",
     "test:dialogue": "node scripts/test-dialogue.cjs",
     "test:fast": "node scripts/test-fast-intents.cjs",
-    "test:phone": "node scripts/test-twilio-webhook.cjs"
+    "test:phone": "node scripts/test-twilio-webhook.cjs",
+    "diagnose:phone": "node scripts/diagnose-twilio-signature.cjs"
   },
   "dependencies": {
     "next": "^16.0.0",
