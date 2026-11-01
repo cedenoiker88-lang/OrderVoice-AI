@@ -8,8 +8,9 @@ import { applyCommand, demoUnderstand, type Command } from "@/lib/order-engine";
 export const runtime = "nodejs";
 
 const CommandSchema = z.object({
-  action: z.enum(["add", "remove", "clear", "confirm", "question"]),
+  action: z.enum(["add", "remove", "replace", "clear", "confirm", "question", "total"]),
   items: z.array(z.object({ productId: z.string(), quantity: z.number().int() })),
+  replacements: z.array(z.object({ fromProductId: z.string(), toProductId: z.string(), quantity: z.number().int() })).optional(),
   answer: z.string(),
   needsClarification: z.boolean()
 });
@@ -25,7 +26,7 @@ async function understandWithAI(message: string, cart: ReturnType<typeof sanitiz
     instructions: `Eres un operador que interpreta pedidos de la pizzería ficticia "Pizza Demo". Tu trabajo es interpretar la intención, NO modificar la base de datos.
 Menú autorizado en JSON: ${JSON.stringify(MENU.map(({ id, name, priceCents }) => ({ id, name, priceCents })))}.
 Devuelve una acción estructurada. Para add/remove usa EXCLUSIVAMENTE IDs exactos del menú y cantidades enteras de 1 a 20. No inventes sabores, tamaños, extras, precios, horarios, promociones, direcciones ni tiempos de entrega. Nunca sustituyas un producto por otro sin preguntar.
-Si faltan sabor, tamaño, cantidad o si hay cualquier ambigüedad, usa action=question, items=[], needsClarification=true y pregunta una sola cosa en "answer". Si el usuario está haciendo una pregunta, usa action=question y responde brevemente en "answer" solo con la información del menú autorizado. Si confirma de manera explícita su pedido actual, usa action=confirm. Si pide vaciar todo, usa clear. Para solicitudes mixtas que no puedas representar sin perder información, pide aclaración. No digas que el pedido está confirmado por tu cuenta: lo decide el backend. Responde en español cordial ecuatoriano.`,
+Si faltan sabor, tamaño, cantidad o si hay cualquier ambigüedad, usa action=question, items=[], needsClarification=true y pregunta una sola cosa en "answer". Si el usuario está haciendo una pregunta, usa action=question y responde brevemente en "answer" solo con la información del menú autorizado. Si pide cambiar un producto por otro, usa action=replace, items=[] y replacements=[{fromProductId,toProductId,quantity}], solo cuando ambos productos son inequívocos. Si pregunta por el total del carrito, usa action=total e items=[]. Si confirma de manera explícita su pedido actual, usa action=confirm. Si pide vaciar todo, usa clear. Para solicitudes mixtas que no puedas representar sin perder información, pide aclaración. No digas que el pedido está confirmado por tu cuenta: lo decide el backend. Responde en español cordial ecuatoriano.`,
     input: JSON.stringify({ currentCart: cart, lastMessages: safeHistory, customerMessage: message }),
     text: { format: zodTextFormat(CommandSchema, "order_command") }
   });
