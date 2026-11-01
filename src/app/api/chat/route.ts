@@ -69,10 +69,10 @@ export async function POST(request: NextRequest) {
       command = await understandWithAI(message, cart, raw.history);
       mode = "ia";
     } else {
-      const history = Array.isArray(raw.history) ? raw.history.slice(-6)
+      const history = Array.isArray(raw.history) ? raw.history.slice(-4)
         .filter((entry): entry is Record<string, unknown> => !!entry && typeof entry === "object")
         .filter((entry) => (entry.role === "user" || entry.role === "assistant") && typeof entry.text === "string")
-        .map((entry) => ({ role: entry.role as "user" | "assistant", text: String(entry.text).slice(0, 400) })) : [];
+        .map((entry) => ({ role: entry.role as "user" | "assistant", text: String(entry.text).slice(0, 250) })) : [];
       try {
         command = await understandWithOllama(message, cart, history);
         mode = "ollama";
