@@ -1,4 +1,5 @@
 import type { Command } from "./order-engine";
+import type { CartItem } from "./menu";
 
 export type PizzaFlavor = "pepperoni" | "hawaiana" | "margarita";
 export type PizzaSize = "mediana" | "familiar";
@@ -43,7 +44,7 @@ function question(text: string, pending: PendingPizza | null): PizzaTurn {
  * Se ejecuta antes de la IA para que una pregunta de aclaración no pierda los datos previos.
  * Nunca inventa sabores ni ofrece bebidas como sabores de pizza.
  */
-export function advancePizzaConversation(message: string, pending: PendingPizza | null): PizzaTurn | null {
+export function advancePizzaConversation(message: string, pending: PendingPizza | null, cart: CartItem[] = []): PizzaTurn | null {
   const text = clean(message);
   const pizzaWord = /\bpizzas?\b/.test(text);
   const flavor: PizzaFlavor | undefined = /\bpepperoni\b/.test(text) ? "pepperoni"
@@ -51,6 +52,31 @@ export function advancePizzaConversation(message: string, pending: PendingPizza 
     : /\bmargaritas?\b/.test(text) ? "margarita" : undefined;
   const size: PizzaSize | undefined = /\bfamiliar(?:es)?\b/.test(text) ? "familiar"
     : /\bmedian[oa]s?\b/.test(text) ? "mediana" : undefined;
+
+  // Correcciones como "mejor que sea de pepperoni" después de añadir una pizza.
+  // Solo se sustituyen automáticamente cuando hay una única pizza de cantidad 1.
+  if (!pending && /\b(mejor|que sea|quiero que sea|prefiero)\b/.test(text) && (flavor || size) && !pizzaWord) {
+    const pizzas = cart.filter((item) => item.productId !== "gaseosa");
+    if (pizzas.length !== 1 || pizzas[0].quantity !== 1) {
+      return question("¿Qué pizza quieres modificar? Indica la pizza actual y el nuevo sabor o tamaño.", null);
+    }
+    const original = pizzas[0];
+    const [oldFlavor, oldSize] = original.productId.split("-") as [PizzaFlavor, PizzaSize];
+    const targetFlavor = flavor ?? oldFlavor;
+    const targetSize = size ?? oldSize;
+    const targetId = targetFlavor + "-" + targetSize;
+    if (targetId === original.productId) {
+      return question("Esa pizza ya tiene ese sabor y tamaño. ¿Deseas agregar algo más?", null);
+    }
+    return {
+      pending: null,
+      command: {
+        action: "replace", items: [],
+        replacements: [{ fromProductId: original.productId, toProductId: targetId, quantity: 1 }],
+        answer: "", needsClarification: false
+      }
+    };
+  }
 
   if (pending) {
     if (/\b(olvida|descarta)\b.*\b(pizza|pedido)|\bno quiero esa pizza\b/.test(text)) {
