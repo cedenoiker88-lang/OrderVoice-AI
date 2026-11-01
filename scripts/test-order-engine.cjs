@@ -17,10 +17,10 @@ function load(source, dependencies = {}) {
 }
 
 const menu = load("menu.ts");
-const { demoUnderstand, applyCommand } = load("order-engine.ts", { "./menu": menu });
+const { demoUnderstand, applyCommand, guardDestructiveIntent } = load("order-engine.ts", { "./menu": menu });
 let cart = [];
 function say(message) {
-  const result = applyCommand(cart, demoUnderstand(message));
+  const result = applyCommand(cart, guardDestructiveIntent(message, demoUnderstand(message)));
   cart = result.cart;
   return result;
 }
@@ -54,6 +54,16 @@ assert.equal(JSON.stringify(cart), beforeFailure, "Un retiro inválido no debe m
 
 say("Quiero tres pizzas");
 assert.equal(JSON.stringify(cart), beforeFailure, "No se inventan sabores o tamaños");
+
+const beforeNegation = JSON.stringify(cart);
+const notConfirmed = say("No confirmo el pedido");
+assert.equal(notConfirmed.confirmed, false);
+assert.equal(JSON.stringify(cart), beforeNegation);
+const notCleared = say("No quiero vaciar el carrito");
+assert.equal(notCleared.confirmed, false);
+assert.equal(JSON.stringify(cart), beforeNegation);
+const hypothetical = say("¿Qué pasa si confirmo el pedido?");
+assert.equal(hypothetical.confirmed, false);
 
 const confirmed = say("Confirmo el pedido");
 assert.equal(confirmed.confirmed, true);
