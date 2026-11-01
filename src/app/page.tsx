@@ -217,6 +217,7 @@ export default function Home() {
     setBusy(true);
     setError("");
     setInput("");
+    if (!voiceRef.current) setLastVoiceDelayMs(null);
     const previousMessages = messagesRef.current;
     messagesRef.current = [...previousMessages, { role: "user", text: message }];
     setMessages(messagesRef.current);
@@ -329,6 +330,7 @@ export default function Home() {
           </div>
           {lastTiming && <div className="performance" aria-label="Medición de velocidad de la última respuesta">
             <span>⏱ Respuesta: <strong>{lastTiming.requestMs} ms</strong></span>
+            <span>Motor: <strong>{lastTiming.mode === "local" ? "Reglas locales" : lastTiming.mode === "ollama" ? "Ollama" : lastTiming.mode === "ia" ? "IA externa" : "Demo"}</strong></span>
             {lastTiming.serverMs !== null && <span>Servidor: <strong>{lastTiming.serverMs} ms</strong></span>}
             {lastTiming.interpretMs !== null && <span>Interpretación: <strong>{lastTiming.interpretMs} ms</strong></span>}
             {lastVoiceDelayMs !== null && <span>Voz desde transcripción: <strong>{lastVoiceDelayMs} ms</strong></span>}
