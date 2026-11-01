@@ -37,3 +37,9 @@ Abre http://localhost:3000 en Chrome o Edge y permite usar el micrófono. Asegú
 ## Alcance / limitaciones
 
 Esta versión usa turnos (escuchar → procesar → responder → volver a escuchar), no una llamada telefónica ni audio simultáneo con interrupciones. El reconocimiento depende de lo que soporte el navegador. Los micrófonos pueden recoger ruido y se necesita probar la estabilidad tras varias conversaciones. Las operaciones se validan en el backend, pero nunca debe usarse el prototipo para pedidos reales sin supervisión y pruebas adicionales.
+
+## Corrección de continuidad del pedido (pendientes)
+
+Si el cliente dice «una pizza hawaiana» y falta el tamaño, el sistema guarda la pizza pendiente sin modificar el carrito. La respuesta «familiar» completa el pedido utilizando el sabor anterior. Si después dice «quiero que sea de pepperoni» y existe una sola pizza de cantidad 1 en el carrito, sustituye esa pizza (no agrega otra). Si hay varias pizzas posibles, pide aclaración.
+
+Prueba de regresión: `npm run test:dialogue`. Para repetir la conversación en la interfaz, pulsa **Reiniciar** después de actualizar el código para descartar el estado anterior de pruebas.
