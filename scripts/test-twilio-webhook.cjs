@@ -42,7 +42,7 @@ async function main() {
   const url = secureUrl(config.TWILIO_PUBLIC_BASE_URL ?? "");
   const sid = "CA" + randomBytes(16).toString("hex");
 
-  async function signedTurn(speech, label) {
+  async function signedTurn(speech, label, expectGather = true) {
     const form = new URLSearchParams({ CallSid: sid });
     if (speech !== null) form.set("SpeechResult", speech);
     const payload = [...form.keys()].sort().reduce((s, key) => s + key + form.get(key), url);
@@ -68,8 +68,8 @@ async function main() {
       const meanings = { 403: "Firma rechazada: revisa el Auth Token y TWILIO_PUBLIC_BASE_URL.", 503: "Falta configurar el servidor o reiniciarlo después de editar .env.local.", 404: "No se encontró /api/telephony/twilio." };
       throw Error(`${label}: HTTP ${response.status}. ${meanings[response.status] || "Consulta los registros de Next.js."}`);
     }
-    if (!responseText.includes("<Response>") || !responseText.includes("<Gather")) {
-      throw Error(`${label}: HTTP ${response.status} pero no devolvió una conversación TwiML válida.`);
+    if (!responseText.includes("<Response>") || (expectGather && !responseText.includes("<Gather")) || (!expectGather && !responseText.includes("<Hangup"))) {
+      throw Error(`${label}: HTTP ${response.status} pero no devolvió las instrucciones TwiML esperadas.`);
     }
     console.log(`OK: ${label} -> HTTP ${response.status}; TwiML de voz en ${milliseconds} ms`);
     return responseText;
@@ -78,8 +78,19 @@ async function main() {
   const greeting = await signedTurn(null, "Saludo inicial");
   if (!greeting.includes("Hola, soy OrderVoice")) throw Error("El webhook no devolvió el saludo esperado.");
   const second = await signedTurn("Quiero dos gaseosas", "Pedido hablado de prueba");
-  if (!second.toLowerCase().includes("gaseosa")) throw Error("El webhook no interpretó el pedido de gaseosas.");
-  console.log("OK: firma, saludo y pedido de ejemplo. No se realizaron llamadas ni cobros.");
+  if (!/añadí[^<]*2 unidades de gaseosa 1 litro/i.test(second)) {
+    throw Error("El webhook no confirmó las dos gaseosas por su nombre. Comprueba que actualizaste dev/v0.5 y reiniciaste Next.js.");
+  }
+  const total = await signedTurn("Cuánto es el total", "Consulta del total");
+  if (!/total actual es[^<]*5/i.test(total)) {
+    throw Error("El carrito no conserva correctamente el total de dos gaseosas ($5).");
+  }
+  const confirmation = await signedTurn("Confirmo el pedido", "Confirmación", false);
+  if (!confirmation.includes("Pedido confirmado")) {
+    throw Error("El webhook no finalizó correctamente el pedido de prueba.");
+  }
+  console.log("OK: firma, saludo, productos por nombre, carrito, total y confirmación.");
+  console.log("No se realizaron llamadas telefónicas ni cobros.");
   console.log("Siguiente diagnóstico: buscar en ngrok una petición POST auténtica de Twilio.");
 }
 
