@@ -22,6 +22,7 @@ type SpeechLike = {
   onerror: ((event: { error: string }) => void) | null;
   onend: (() => void) | null;
   start: () => void;
+  stop: () => void;
 };
 type SpeechWindow = Window & {
   SpeechRecognition?: new () => SpeechLike;
@@ -42,9 +43,14 @@ export default function Home() {
   const [busy, setBusy] = useState(false);
   const [listening, setListening] = useState(false);
   const [speakReplies, setSpeakReplies] = useState(false);
+  const [voiceSession, setVoiceSession] = useState(false);
   const [error, setError] = useState("");
   const conversationRef = useRef<HTMLDivElement>(null);
   const busyRef = useRef(false);
+  const voiceRef = useRef(false);
+  const recognitionRef = useRef<SpeechLike | null>(null);
+  const generationRef = useRef(0);
+  const retryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     try {
@@ -62,14 +68,111 @@ export default function Home() {
     conversation.scrollTo({ top: conversation.scrollHeight, behavior: "smooth" });
   }, [messages, busy]);
 
-  function say(text: string) {
-    if (!speakReplies || !window.speechSynthesis) return;
-    window.speechSynthesis.cancel();
-    const voice = new SpeechSynthesisUtterance(text);
-    voice.lang = "es-EC";
-    voice.rate = 1;
-    window.speechSynthesis.speak(voice);
+
+  function stopVoiceSession() {
+    generationRef.current += 1;
+    voiceRef.current = false;
+    setVoiceSession(false);
+    setListening(false);
+    if (retryRef.current) clearTimeout(retryRef.current);
+    retryRef.current = null;
+    recognitionRef.current?.stop();
+    recognitionRef.current = null;
+    window.speechSynthesis?.cancel();
   }
+
+  function listen(generation: number) {
+    if (!voiceRef.current || generation !== generationRef.current || busyRef.current) return;
+    const browser = window as SpeechWindow;
+    const SpeechAPI = browser.SpeechRecognition ?? browser.webkitSpeechRecognition;
+    if (!SpeechAPI) {
+      setError("Reconocimiento de voz no disponible en este navegador.");
+      stopVoiceSession();
+      return;
+    }
+    try {
+      let heard = false;
+      const recognition = new SpeechAPI();
+      recognitionRef.current = recognition;
+      recognition.lang = "es-EC";
+      recognition.interimResults = false;
+      recognition.continuous = false;
+      recognition.onresult = (event) => {
+        if (heard || !voiceRef.current || generation !== generationRef.current) return;
+        const phrase = event.results[0]?.[0]?.transcript?.trim();
+        if (!phrase) return;
+        heard = true;
+        setListening(false);
+        recognition.stop();
+        void send(phrase);
+      };
+      recognition.onerror = (event) => {
+        if (generation !== generationRef.current || !voiceRef.current) return;
+        if (event.error !== "no-speech" && event.error !== "aborted") {
+          stopVoiceSession();
+          setError("Micrófono: " + event.error + ". Revisa los permisos y la conexión.");
+        }
+      };
+      recognition.onend = () => {
+        if (recognitionRef.current === recognition) recognitionRef.current = null;
+        setListening(false);
+        if (!heard && voiceRef.current && generation === generationRef.current) {
+          retryRef.current = setTimeout(() => listen(generation), 500);
+        }
+      };
+      setListening(true);
+      recognition.start();
+    } catch {
+      stopVoiceSession();
+      setError("No se pudo activar el micrófono.");
+    }
+  }
+
+  function say(text: string, resume = false) {
+    if ((!speakReplies && !resume) || !window.speechSynthesis) return;
+    window.speechSynthesis.cancel();
+    const generation = generationRef.current;
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = "es-EC";
+    utterance.rate = 1;
+    if (resume) {
+      utterance.onend = () => {
+        if (voiceRef.current && generation === generationRef.current) {
+          retryRef.current = setTimeout(() => listen(generation), 350);
+        }
+      };
+      utterance.onerror = () => {
+        if (voiceRef.current && generation === generationRef.current) {
+          stopVoiceSession();
+          setError("No se pudo reproducir la voz del asistente.");
+        }
+      };
+    }
+    window.speechSynthesis.speak(utterance);
+  }
+
+  function toggleVoiceSession() {
+    if (voiceRef.current) { stopVoiceSession(); return; }
+    const browser = window as SpeechWindow;
+    if (!(browser.SpeechRecognition ?? browser.webkitSpeechRecognition) || !window.speechSynthesis) {
+      setError("Para conversar por voz, utiliza un navegador compatible como Chrome o Edge.");
+      return;
+    }
+    if (busyRef.current) return;
+    generationRef.current += 1;
+    voiceRef.current = true;
+    setVoiceSession(true);
+    setError("");
+    say("¡Hola! Soy OrderVoice. ¿Qué deseas pedir?", true);
+  }
+
+  useEffect(() => () => {
+    voiceRef.current = false;
+    generationRef.current += 1;
+    if (retryRef.current) clearTimeout(retryRef.current);
+    recognitionRef.current?.stop();
+    window.speechSynthesis?.cancel();
+  }, []);
 
   async function send(text: string) {
     const message = text.trim();
@@ -91,7 +194,7 @@ export default function Home() {
       setError(data.notice ?? "");
       setCart(data.order ? [] : data.cart);
       setMessages((previous) => [...previous, { role: "assistant", text: data.reply }]);
-      say(data.reply);
+      say(data.reply, voiceRef.current);
       if (data.order) {
         setOrders((previous) => {
           const updated = [data.order!, ...previous].slice(0, 12);
@@ -100,6 +203,7 @@ export default function Home() {
         });
       }
     } catch (cause) {
+      if (voiceRef.current) stopVoiceSession();
       setError(cause instanceof Error ? cause.message : "Ocurrió un error inesperado");
     } finally {
       busyRef.current = false;
@@ -108,7 +212,7 @@ export default function Home() {
   }
 
   function startMicrophone() {
-    if (listening || busy) return;
+    if (listening || busy || voiceRef.current) return;
     const browser = window as SpeechWindow;
     const SpeechAPI = browser.SpeechRecognition ?? browser.webkitSpeechRecognition;
     if (!SpeechAPI) {
@@ -134,6 +238,7 @@ export default function Home() {
   }
 
   function reset() {
+    if (voiceRef.current) stopVoiceSession();
     setCart([]);
     setMessages([initialMessage]);
     setError("");
@@ -143,7 +248,7 @@ export default function Home() {
   return (
     <div className="shell">
       <header className="header">
-        <div className="brand"><div className="brandmark">◉</div><div><strong>OrderVoice <span>AI</span></strong><small>Panel de pruebas · v0.3</small></div></div>
+        <div className="brand"><div className="brandmark">◉</div><div><strong>OrderVoice <span>AI</span></strong><small>Panel de pruebas · v0.4</small></div></div>
         <div className="header-right"><span className="status-dot" /><span>Servidor de desarrollo</span><span className={`mode mode-${mode}`}>{mode === "ollama" ? "OLLAMA LOCAL" : mode === "ia" ? "IA ACTIVADA" : mode === "demo" ? "MODO DEMO" : "MODO POR DETECTAR"}</span></div>
       </header>
 
@@ -156,9 +261,15 @@ export default function Home() {
             {messages.map((message, index) => <div className={`message ${message.role}`} key={index}><span className="message-avatar">{message.role === "assistant" ? "✦" : "TÚ"}</span><div className="message-body"><span className="speaker">{message.role === "assistant" ? "OrderVoice" : "Cliente"}</span><p>{message.text}</p></div></div>)}
             {busy && <div className="thinking">OrderVoice está procesando tu pedido…</div>}
           </div>
+          <div className="voice-control">
+            <button type="button" className={voiceSession ? "voice-session active" : "voice-session"} onClick={toggleVoiceSession} disabled={busy && !voiceSession}>
+              {voiceSession ? "■ Terminar conversación" : "🎧 Iniciar conversación por voz"}
+            </button>
+            <span role="status">{voiceSession ? (listening ? "Escuchando al cliente…" : busy ? "Procesando el pedido…" : "OrderVoice está hablando o preparando la escucha…") : "Inicio manual de conversación"}</span>
+          </div>
           {error && <p className="error" role="alert">⚠ {error}</p>}
           <form className="composer" onSubmit={(event) => {event.preventDefault(); void send(input);}}>
-            <button className={`mic ${listening ? "active" : ""}`} type="button" aria-label="Dictar pedido" title="Hablar con el micrófono" disabled={busy} onClick={startMicrophone}>{listening ? "◉" : "🎙"}</button>
+            <button className={`mic ${listening ? "active" : ""}`} type="button" aria-label="Dictar pedido" title="Hablar con el micrófono" disabled={busy || voiceSession} onClick={startMicrophone}>{listening ? "◉" : "🎙"}</button>
             <input aria-label="Escribe el pedido" placeholder="Ej.: dos pepperoni familiares y una hawaiana mediana" maxLength={500} value={input} onChange={(event) => setInput(event.target.value)} disabled={busy}/>
             <button className="send" type="submit" disabled={busy || !input.trim()}>Enviar <span>➜</span></button>
           </form>
