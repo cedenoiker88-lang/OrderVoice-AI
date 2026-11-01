@@ -31,6 +31,10 @@ assert.equal(menu.calculateTotal(cart), 3800);
 assert.equal(count("pepperoni-familiar"), 2);
 assert.equal(count("hawaiana-mediana"), 1);
 
+assert.equal(demoUnderstand("Agrega una pepperoni familiar").items[0]?.productId, "pepperoni-familiar", "Debe reconocer familiar en singular");
+assert.equal(demoUnderstand("Agrega dos pepperoni familiares").items[0]?.productId, "pepperoni-familiar", "Debe reconocer familiares en plural");
+assert.equal(demoUnderstand("Cambia una pepperoni familiar por una hawaiana mediana").action, "replace", "Debe interpretar el reemplazo");
+
 say("Cambia una pepperoni familiar por una hawaiana mediana");
 assert.equal(menu.calculateTotal(cart), 3400);
 assert.equal(count("pepperoni-familiar"), 1);
@@ -56,4 +60,4 @@ assert.equal(confirmed.confirmed, true);
 assert.equal(menu.calculateTotal(cart), 3650);
 say("Vaciar");
 assert.equal(cart.length, 0);
-console.log("OK: 8 comprobaciones de pedidos v0.2");
+console.log("OK: pruebas de pedidos v0.2, incluyendo singular/plural y reemplazos");
