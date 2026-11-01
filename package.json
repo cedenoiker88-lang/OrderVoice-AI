@@ -13,7 +13,9 @@
     "test:fast": "node scripts/test-fast-intents.cjs",
     "test:phone": "node scripts/test-twilio-webhook.cjs",
     "diagnose:phone": "node scripts/diagnose-twilio-signature.cjs",
-    "verify:twilio": "node scripts/verify-twilio-credentials.cjs"
+    "verify:twilio": "node scripts/verify-twilio-credentials.cjs",
+    "setup:trial": "node scripts/setup-twilio-trial.cjs",
+    "test:trial": "node scripts/test-twilio-trial.cjs"
   },
   "dependencies": {
     "next": "^16.0.0",
