@@ -136,7 +136,7 @@ export default function Home() {
   return (
     <div className="shell">
       <header className="header">
-        <div className="brand"><div className="brandmark">◉</div><div><strong>OrderVoice <span>AI</span></strong><small>Panel de pruebas · v0.1</small></div></div>
+        <div className="brand"><div className="brandmark">◉</div><div><strong>OrderVoice <span>AI</span></strong><small>Panel de pruebas · v0.2</small></div></div>
         <div className="header-right"><span className="status-dot" /><span>Servidor de desarrollo</span><span className={`mode mode-${mode}`}>{mode === "ia" ? "IA ACTIVADA" : mode === "demo" ? "MODO DEMO" : "MODO POR DETECTAR"}</span></div>
       </header>
 
