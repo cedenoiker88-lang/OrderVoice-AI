@@ -1,12 +1,13 @@
 {
   "name": "ordervoice-ai",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:orders": "node scripts/test-order-engine.cjs"
   },
   "dependencies": {
     "next": "^16.0.0",
