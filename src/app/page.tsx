@@ -1,0 +1,171 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import { MENU, calculateTotal, formatUSD, productById, type CartItem, type ConfirmedOrder } from "@/lib/menu";
+
+type ChatMessage = { role: "assistant" | "user"; text: string };
+type ChatResponse = {
+  cart: CartItem[];
+  reply: string;
+  order?: ConfirmedOrder;
+  mode: "demo" | "ia";
+  error?: string;
+};
+
+type SpeechResultEvent = { results: ArrayLike<ArrayLike<{ transcript: string }>> };
+type SpeechLike = {
+  lang: string;
+  interimResults: boolean;
+  continuous: boolean;
+  onresult: ((event: SpeechResultEvent) => void) | null;
+  onerror: ((event: { error: string }) => void) | null;
+  onend: (() => void) | null;
+  start: () => void;
+};
+type SpeechWindow = Window & {
+  SpeechRecognition?: new () => SpeechLike;
+  webkitSpeechRecognition?: new () => SpeechLike;
+};
+
+const initialMessage: ChatMessage = {
+  role: "assistant",
+  text: "¡Hola! Bienvenido a Pizza Demo. Soy OrderVoice, tu asistente virtual de prueba. ¿Qué pizzas deseas pedir?"
+};
+
+export default function Home() {
+  const [messages, setMessages] = useState<ChatMessage[]>([initialMessage]);
+  const [input, setInput] = useState("");
+  const [cart, setCart] = useState<CartItem[]>([]);
+  const [orders, setOrders] = useState<ConfirmedOrder[]>([]);
+  const [mode, setMode] = useState<"demo" | "ia" | "detectando">("detectando");
+  const [busy, setBusy] = useState(false);
+  const [listening, setListening] = useState(false);
+  const [speakReplies, setSpeakReplies] = useState(false);
+  const [error, setError] = useState("");
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const busyRef = useRef(false);
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("ordervoice:demo-orders");
+      if (saved) {
+        const parsed: unknown = JSON.parse(saved);
+        if (Array.isArray(parsed)) setOrders(parsed.slice(0, 12) as ConfirmedOrder[]);
+      }
+    } catch { /* datos locales inválidos: no bloquea la demo */ }
+  }, []);
+  useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, busy]);
+
+  function say(text: string) {
+    if (!speakReplies || !window.speechSynthesis) return;
+    window.speechSynthesis.cancel();
+    const voice = new SpeechSynthesisUtterance(text);
+    voice.lang = "es-EC";
+    voice.rate = 1;
+    window.speechSynthesis.speak(voice);
+  }
+
+  async function send(text: string) {
+    const message = text.trim();
+    if (!message || busyRef.current) return;
+    busyRef.current = true;
+    setBusy(true);
+    setError("");
+    setInput("");
+    setMessages((previous) => [...previous, { role: "user", text: message }]);
+    try {
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message, cart, history: messages.slice(-8) })
+      });
+      const data = (await response.json()) as ChatResponse;
+      if (!response.ok) throw new Error(data.error ?? "Error al conectar con el servidor");
+      setMode(data.mode);
+      setCart(data.order ? [] : data.cart);
+      setMessages((previous) => [...previous, { role: "assistant", text: data.reply }]);
+      say(data.reply);
+      if (data.order) {
+        setOrders((previous) => {
+          const updated = [data.order!, ...previous].slice(0, 12);
+          try { localStorage.setItem("ordervoice:demo-orders", JSON.stringify(updated)); } catch { /* almacenamiento deshabilitado */ }
+          return updated;
+        });
+      }
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Ocurrió un error inesperado");
+    } finally {
+      busyRef.current = false;
+      setBusy(false);
+    }
+  }
+
+  function startMicrophone() {
+    if (listening || busy) return;
+    const browser = window as SpeechWindow;
+    const SpeechAPI = browser.SpeechRecognition ?? browser.webkitSpeechRecognition;
+    if (!SpeechAPI) {
+      setError("Tu navegador no tiene reconocimiento de voz compatible. Usa Chrome o Edge, o escribe el pedido.");
+      return;
+    }
+    try {
+      window.speechSynthesis?.cancel();
+      const recognition = new SpeechAPI();
+      recognition.lang = "es-EC";
+      recognition.interimResults = false;
+      recognition.continuous = false;
+      recognition.onresult = (event) => { const phrase = event.results[0]?.[0]?.transcript; if (phrase) void send(phrase); };
+      recognition.onerror = (event) => { setError(`Micrófono: ${event.error}. Verifica permisos y conexión.`); setListening(false); };
+      recognition.onend = () => setListening(false);
+      setError("");
+      setListening(true);
+      recognition.start();
+    } catch {
+      setListening(false);
+      setError("No se pudo activar el micrófono. Comprueba los permisos del navegador.");
+    }
+  }
+
+  function reset() {
+    setCart([]);
+    setMessages([initialMessage]);
+    setError("");
+  }
+
+  const total = calculateTotal(cart);
+  return (
+    <div className="shell">
+      <header className="header">
+        <div className="brand"><div className="brandmark">◉</div><div><strong>OrderVoice <span>AI</span></strong><small>Panel de pruebas · v0.1</small></div></div>
+        <div className="header-right"><span className="status-dot" /><span>Servidor de desarrollo</span><span className={`mode mode-${mode}`}>{mode === "ia" ? "IA ACTIVADA" : mode === "demo" ? "MODO DEMO" : "MODO POR DETECTAR"}</span></div>
+      </header>
+
+      <div className="intro"><div><span className="eyebrow">PRIMER PROTOTIPO</span><h1>Tu recepcionista, <em>siempre disponible.</em></h1><p>Simula pedidos de una pizzería, conversa y comprueba cómo funciona el sistema antes de añadir llamadas telefónicas.</p></div><div className="intro-chip">🍕 <strong>Pizza Demo</strong><small>Restaurante ficticio</small></div></div>
+
+      <main className="dashboard">
+        <section className="panel chat-panel" aria-label="Asistente de pedidos">
+          <div className="panel-heading"><div><h2>Asistente de pedidos</h2><p>Chat de simulación · Sin llamadas reales</p></div><button className="secondary reset" onClick={reset} disabled={busy}>↻ Reiniciar</button></div>
+          <div className="conversation" role="log" aria-live="polite">
+            {messages.map((message, index) => <div className={`message ${message.role}`} key={index}><span className="message-avatar">{message.role === "assistant" ? "✦" : "TÚ"}</span><div className="message-body"><span className="speaker">{message.role === "assistant" ? "OrderVoice" : "Cliente"}</span><p>{message.text}</p></div></div>)}
+            {busy && <div className="thinking">OrderVoice está procesando tu pedido…</div>}
+            <div ref={messagesEndRef}/>
+          </div>
+          {error && <p className="error" role="alert">⚠ {error}</p>}
+          <form className="composer" onSubmit={(event) => {event.preventDefault(); void send(input);}}>
+            <button className={`mic ${listening ? "active" : ""}`} type="button" aria-label="Dictar pedido" title="Hablar con el micrófono" disabled={busy} onClick={startMicrophone}>{listening ? "◉" : "🎙"}</button>
+            <input aria-label="Escribe el pedido" placeholder="Ej.: dos pepperoni familiares y una hawaiana mediana" maxLength={500} value={input} onChange={(event) => setInput(event.target.value)} disabled={busy}/>
+            <button className="send" type="submit" disabled={busy || !input.trim()}>Enviar <span>➜</span></button>
+          </form>
+          <div className="chat-footer"><label><input type="checkbox" checked={speakReplies} onChange={(event) => setSpeakReplies(event.target.checked)}/> Leer las respuestas en voz alta</label><span>{listening ? "🎙 Escuchando…" : "Micrófono opcional"}</span></div>
+        </section>
+
+        <aside className="right-column">
+          <section className="panel"><div className="panel-heading compact"><div><h2>Menú de prueba</h2><p>Precios inventados, en USD</p></div><span className="counter">{MENU.length} productos</span></div><div className="menu-list">{MENU.map((product) => <div className="menu-item" key={product.id}><div className="food-icon">{product.emoji}</div><div className="food-name"><strong>{product.name}</strong><small>{formatUSD(product.priceCents)}</small></div><button type="button" title={`Añadir ${product.name}`} disabled={busy} className="add-btn" onClick={() => {void send(`Agrega una ${product.name}`);}}>+</button></div>)}</div></section>
+          <section className="panel"><div className="panel-heading compact"><div><h2>Pedido actual</h2><p>Importe validado en servidor</p></div><span className="counter">{cart.reduce((n, item) => n + item.quantity, 0)} uds.</span></div>{cart.length ? <div className="cart-list">{cart.map((line) => {const p = productById(line.productId); return p && <div className="cart-line" key={line.productId}><span><b>{line.quantity}×</b> {p.name}</span><strong>{formatUSD(p.priceCents * line.quantity)}</strong></div>;})}</div> : <div className="empty">🛒<p>Tu carrito está vacío.</p><small>Pide algo por chat o usa los botones +</small></div>}<div className="cart-bottom"><div className="total"><span>Total</span><strong>{formatUSD(total)}</strong></div><button className="confirm" type="button" disabled={busy || !cart.length} onClick={() => {void send("Confirmo el pedido");}}>✓ Confirmar pedido</button></div></section>
+          <section className="panel"><div className="panel-heading compact"><div><h2>Pedidos confirmados</h2><p>Guardados solo en este navegador</p></div></div>{orders.length ? <div className="orders">{orders.slice(0, 3).map((order) => <div className="order-row" key={order.id}><div><strong>#{order.id}</strong><small>{new Date(order.createdAt).toLocaleString("es-EC")}</small></div><strong>{formatUSD(order.totalCents)}</strong></div>)}</div> : <p className="no-orders">Todavía no hay pedidos confirmados.</p>}</section>
+        </aside>
+      </main>
+      <footer>OrderVoice AI · MVP educativo · No recibe llamadas reales, no cobra pagos y no entrega pedidos a restaurantes.</footer>
+    </div>
+  );
+}
