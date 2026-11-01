@@ -110,7 +110,9 @@ export default function Home() {
         if (generation !== generationRef.current || !voiceRef.current) return;
         if (event.error !== "no-speech" && event.error !== "aborted") {
           stopVoiceSession();
-          setError("Micrófono: " + event.error + ". Revisa los permisos y la conexión.");
+          setError(event.error === "network"
+            ? "El reconocimiento de voz del navegador falló por red. Si estás en Brave, prueba el mismo sitio en Chrome o Edge; es una limitación del reconocimiento del navegador, no de Ollama."
+            : "Micrófono: " + event.error + ". Revisa los permisos y la conexión.");
         }
       };
       recognition.onend = () => {
@@ -133,7 +135,20 @@ export default function Home() {
     window.speechSynthesis.cancel();
     const generation = generationRef.current;
     const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = "es-EC";
+    // Elegir una voz española explícita: lang por sí solo puede usar la voz inglesa predeterminada.
+    const spanishVoices = window.speechSynthesis.getVoices()
+      .filter((voice) => /^es(?:-|$)/i.test(voice.lang));
+    const preferredVoice = spanishVoices.find((voice) => /^es-EC$/i.test(voice.lang))
+      ?? spanishVoices.find((voice) => /^es-(MX|CO|ES)$/i.test(voice.lang))
+      ?? spanishVoices[0];
+    if (preferredVoice) {
+      utterance.voice = preferredVoice;
+      utterance.lang = preferredVoice.lang;
+    } else {
+      // No inventar que existe una voz española; el navegador puede usar otra voz.
+      utterance.lang = "es-ES";
+      setError("No encontré una voz española instalada. Windows podría leer el texto con acento inglés. Instala una voz de español en Configuración > Hora e idioma > Voz.");
+    }
     utterance.rate = 1;
     if (resume) {
       utterance.onend = () => {
@@ -226,7 +241,7 @@ export default function Home() {
       recognition.interimResults = false;
       recognition.continuous = false;
       recognition.onresult = (event) => { const phrase = event.results[0]?.[0]?.transcript; if (phrase) void send(phrase); };
-      recognition.onerror = (event) => { setError(`Micrófono: ${event.error}. Verifica permisos y conexión.`); setListening(false); };
+      recognition.onerror = (event) => { setError(event.error === "network" ? "Reconocimiento por voz no disponible por red en este navegador. Prueba Chrome o Edge." : `Micrófono: ${event.error}. Verifica permisos y conexión.`); setListening(false); };
       recognition.onend = () => setListening(false);
       setError("");
       setListening(true);
