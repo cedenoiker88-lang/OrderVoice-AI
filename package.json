@@ -10,7 +10,8 @@
     "test:orders": "node scripts/test-order-engine.cjs",
     "test:ollama": "node scripts/test-ollama.cjs",
     "test:dialogue": "node scripts/test-dialogue.cjs",
-    "test:fast": "node scripts/test-fast-intents.cjs"
+    "test:fast": "node scripts/test-fast-intents.cjs",
+    "test:phone": "node scripts/test-twilio-webhook.cjs"
   },
   "dependencies": {
     "next": "^16.0.0",
