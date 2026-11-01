@@ -6,6 +6,7 @@ import { MENU, calculateTotal, sanitizeCart, type ConfirmedOrder } from "@/lib/m
 import { applyCommand, demoUnderstand, type Command } from "@/lib/order-engine";
 import { understandWithOllama } from "@/lib/ollama";
 import { advancePizzaConversation, sanitizePending } from "@/lib/pizza-dialogue";
+import { fastUnderstand } from "@/lib/fast-intents";
 
 export const runtime = "nodejs";
 
@@ -37,6 +38,7 @@ Si faltan sabor, tamaño, cantidad o si hay cualquier ambigüedad, usa action=qu
 }
 
 export async function POST(request: NextRequest) {
+  const startedAt = performance.now();
   try {
     const body: unknown = await request.json();
     if (!body || typeof body !== "object") return NextResponse.json({ error: "Solicitud inválida" }, { status: 400 });
@@ -47,15 +49,20 @@ export async function POST(request: NextRequest) {
     // Un pedido incompleto mantiene sus campos pendientes entre mensajes.
     // El motor determinista resuelve aclaraciones antes de consultar al modelo.
     const incomingPending = sanitizePending(raw.pending);
+    const interpretationStartedAt = performance.now();
     const pizzaTurn = advancePizzaConversation(message, incomingPending, cart);
+    const fastCommand = pizzaTurn ? null : fastUnderstand(message);
     let pending = pizzaTurn ? pizzaTurn.pending : incomingPending;
     const configuredProvider = process.env.ORDERVOICE_PROVIDER ?? "ollama";
-    let mode: "ollama" | "demo" | "ia" = "demo";
+    let mode: "ollama" | "demo" | "ia" | "local" = "demo";
     let notice: string | undefined;
     let command: Command;
     if (pizzaTurn) {
       command = pizzaTurn.command;
-      mode = configuredProvider === "ollama" ? "ollama" : "demo";
+      mode = "local";
+    } else if (fastCommand) {
+      command = fastCommand;
+      mode = "local";
     } else if (configuredProvider === "demo") {
       command = demoUnderstand(message);
     } else if (configuredProvider === "openai" && process.env.OPENAI_API_KEY) {
@@ -75,13 +82,21 @@ export async function POST(request: NextRequest) {
         notice = "Ollama no respondió. Estoy usando las reglas básicas de demostración; no se ha enviado información a servicios de pago.";
       }
     }
+    const interpretMs = Math.round(performance.now() - interpretationStartedAt);
     if (command.action === "clear" || command.action === "confirm") pending = null;
     const result = applyCommand(cart, command);
     let order: ConfirmedOrder | undefined;
     if (result.confirmed) {
       order = { id: crypto.randomUUID().slice(0, 8).toUpperCase(), createdAt: new Date().toISOString(), items: cart, totalCents: calculateTotal(cart) };
     }
-    return NextResponse.json({ ...result, order, mode, notice, pending });
+    const serverMs = Math.round(performance.now() - startedAt);
+    const response = NextResponse.json({
+      ...result, order, mode, notice, pending,
+      metrics: { interpretMs, serverMs }
+    });
+    response.headers.set("Server-Timing", `interpret;dur=${interpretMs}, total;dur=${serverMs}`);
+    response.headers.set("Cache-Control", "no-store");
+    return response;
   } catch (error) {
     console.error("/api/chat:", error);
     return NextResponse.json({ error: "No se pudo procesar el mensaje. Comprueba la conexión y la configuración de tu API." }, { status: 500 });
