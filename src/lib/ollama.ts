@@ -73,12 +73,14 @@ export async function understandWithOllama(
       model: process.env.OLLAMA_MODEL || "llama3.2:3b",
       stream: false,
       format: outputSchema,
-      options: { temperature: 0, num_predict: 240 },
+      // Evita recargar el modelo entre turnos; permanece en memoria 15 min.
+      keep_alive: "15m",
+      options: { temperature: 0, num_predict: 240, num_ctx: 3072 },
       messages: [
         { role: "system", content: instructions },
         { role: "user", content: JSON.stringify({
           currentCart: cart,
-          lastMessages: history.slice(-6),
+          lastMessages: history.slice(-4),
           customerMessage: message
         }) }
       ]
