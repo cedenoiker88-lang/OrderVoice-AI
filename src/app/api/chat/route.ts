@@ -5,6 +5,7 @@ import { zodTextFormat } from "openai/helpers/zod";
 import { MENU, calculateTotal, sanitizeCart, type ConfirmedOrder } from "@/lib/menu";
 import { applyCommand, demoUnderstand, type Command } from "@/lib/order-engine";
 import { understandWithOllama } from "@/lib/ollama";
+import { advancePizzaConversation, sanitizePending } from "@/lib/pizza-dialogue";
 
 export const runtime = "nodejs";
 
@@ -43,12 +44,19 @@ export async function POST(request: NextRequest) {
     const message = typeof raw.message === "string" ? raw.message.trim() : "";
     if (!message || message.length > 500) return NextResponse.json({ error: "El mensaje debe tener entre 1 y 500 caracteres" }, { status: 400 });
     const cart = sanitizeCart(raw.cart);
-    // Ollama local por defecto; OpenAI solo si se selecciona explícitamente.
+    // Un pedido incompleto mantiene sus campos pendientes entre mensajes.
+    // El motor determinista resuelve aclaraciones antes de consultar al modelo.
+    const incomingPending = sanitizePending(raw.pending);
+    const pizzaTurn = advancePizzaConversation(message, incomingPending);
+    let pending = pizzaTurn ? pizzaTurn.pending : incomingPending;
     const configuredProvider = process.env.ORDERVOICE_PROVIDER ?? "ollama";
     let mode: "ollama" | "demo" | "ia" = "demo";
     let notice: string | undefined;
     let command: Command;
-    if (configuredProvider === "demo") {
+    if (pizzaTurn) {
+      command = pizzaTurn.command;
+      mode = configuredProvider === "ollama" ? "ollama" : "demo";
+    } else if (configuredProvider === "demo") {
       command = demoUnderstand(message);
     } else if (configuredProvider === "openai" && process.env.OPENAI_API_KEY) {
       command = await understandWithAI(message, cart, raw.history);
@@ -67,12 +75,13 @@ export async function POST(request: NextRequest) {
         notice = "Ollama no respondió. Estoy usando las reglas básicas de demostración; no se ha enviado información a servicios de pago.";
       }
     }
+    if (command.action === "clear" || command.action === "confirm") pending = null;
     const result = applyCommand(cart, command);
     let order: ConfirmedOrder | undefined;
     if (result.confirmed) {
       order = { id: crypto.randomUUID().slice(0, 8).toUpperCase(), createdAt: new Date().toISOString(), items: cart, totalCents: calculateTotal(cart) };
     }
-    return NextResponse.json({ ...result, order, mode, notice });
+    return NextResponse.json({ ...result, order, mode, notice, pending });
   } catch (error) {
     console.error("/api/chat:", error);
     return NextResponse.json({ error: "No se pudo procesar el mensaje. Comprueba la conexión y la configuración de tu API." }, { status: 500 });
