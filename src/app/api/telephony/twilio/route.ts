@@ -88,7 +88,26 @@ export async function POST(request: NextRequest) {
   if (raw.length > 12_000) return new NextResponse("Solicitud demasiado grande", { status: 413 });
   const params = new URLSearchParams(raw);
   const externalUrl = publicBase + "/api/telephony/twilio" + request.nextUrl.search;
-  if (!validSignature(externalUrl, params, request.headers.get("x-twilio-signature") ?? "", token)) {
+  const providedSignature = request.headers.get("x-twilio-signature") ?? "";
+  if (!providedSignature) {
+    // No registrar el token, el valor de la firma, los teléfonos ni el cuerpo del webhook.
+    console.warn("[Twilio webhook] Firma ausente; solicitud rechazada.");
+    return new NextResponse("Firma Twilio inválida", { status: 403 });
+  }
+  if (!validSignature(externalUrl, params, providedSignature, token)) {
+    // Solo se registran indicadores booleanos para distinguir URL de firma incorrecta.
+    // Una coincidencia con una variante no la convierte automáticamente en confiable.
+    const urlWithSlash = publicBase + "/api/telephony/twilio/" + request.nextUrl.search;
+    const alternateSlashMatches = validSignature(urlWithSlash, params, providedSignature, token);
+    const hostHeader = request.headers.get("host") ?? "";
+    const forwardedProto = request.headers.get("x-forwarded-proto");
+    const forwardedMatchesConfigured = hostHeader === new URL(publicBase).host &&
+      forwardedProto === "https";
+    console.warn("[Twilio webhook] Firma presente pero inválida.", {
+      alternateSlashMatches,
+      forwardedMatchesConfigured,
+      parameterCount: [...params.keys()].length
+    });
     return new NextResponse("Firma Twilio inválida", { status: 403 });
   }
   const callSid = params.get("CallSid") ?? "";
