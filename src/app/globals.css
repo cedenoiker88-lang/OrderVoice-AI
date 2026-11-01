@@ -6,3 +6,8 @@
 .voice-session.active{background:#b4354c}
 .voice-control span{font-size:11px;color:#66758e;line-height:1.5}
 @media(max-width:670px){.voice-control{padding:12px 13px}.voice-session{width:100%}}
+
+/* v0.5: métricas discretas de latencia; sin alterar el scroll del chat. */
+.performance{display:flex;align-items:center;flex-wrap:wrap;gap:7px 16px;padding:9px 21px;color:#6a7890;font-size:11px;border-top:1px solid #eef1f6;background:#f9fbff}
+.performance strong{font-variant-numeric:tabular-nums;color:#285fb8}
+@media(max-width:670px){.performance{padding:9px 13px;gap:6px 12px}}
