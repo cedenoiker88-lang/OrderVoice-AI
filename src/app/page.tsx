@@ -50,6 +50,11 @@ export default function Home() {
   const [error, setError] = useState("");
   const conversationRef = useRef<HTMLDivElement>(null);
   const busyRef = useRef(false);
+  // Las funciones asíncronas de SpeechRecognition pueden conservar un cierre
+  // antiguo de React. Estas referencias mantienen la sesión al día entre turnos.
+  const cartRef = useRef<CartItem[]>([]);
+  const pendingRef = useRef<PendingPizza | null>(null);
+  const messagesRef = useRef<ChatMessage[]>([initialMessage]);
   const voiceRef = useRef(false);
   const recognitionRef = useRef<SpeechLike | null>(null);
   const generationRef = useRef(0);
@@ -199,20 +204,30 @@ export default function Home() {
     setBusy(true);
     setError("");
     setInput("");
-    setMessages((previous) => [...previous, { role: "user", text: message }]);
+    const previousMessages = messagesRef.current;
+    messagesRef.current = [...previousMessages, { role: "user", text: message }];
+    setMessages(messagesRef.current);
     try {
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message, cart, pending, history: messages.slice(-8) })
+        body: JSON.stringify({
+          message,
+          cart: cartRef.current,
+          pending: pendingRef.current,
+          history: previousMessages.slice(-8)
+        })
       });
       const data = (await response.json()) as ChatResponse;
       if (!response.ok) throw new Error(data.error ?? "Error al conectar con el servidor");
       setMode(data.mode);
-      setPending(data.pending ?? null);
+      pendingRef.current = data.pending ?? null;
+      setPending(pendingRef.current);
       setError(data.notice ?? "");
-      setCart(data.order ? [] : data.cart);
-      setMessages((previous) => [...previous, { role: "assistant", text: data.reply }]);
+      cartRef.current = data.order ? [] : data.cart;
+      setCart(cartRef.current);
+      messagesRef.current = [...messagesRef.current, { role: "assistant", text: data.reply }];
+      setMessages(messagesRef.current);
       say(data.reply, voiceRef.current);
       if (data.order) {
         setOrders((previous) => {
@@ -258,6 +273,9 @@ export default function Home() {
 
   function reset() {
     if (voiceRef.current) stopVoiceSession();
+    pendingRef.current = null;
+    cartRef.current = [];
+    messagesRef.current = [initialMessage];
     setPending(null);
     setCart([]);
     setMessages([initialMessage]);
