@@ -8,7 +8,8 @@ type ChatResponse = {
   cart: CartItem[];
   reply: string;
   order?: ConfirmedOrder;
-  mode: "demo" | "ia";
+  mode: "demo" | "ia" | "ollama";
+  notice?: string;
   error?: string;
 };
 
@@ -37,7 +38,7 @@ export default function Home() {
   const [input, setInput] = useState("");
   const [cart, setCart] = useState<CartItem[]>([]);
   const [orders, setOrders] = useState<ConfirmedOrder[]>([]);
-  const [mode, setMode] = useState<"demo" | "ia" | "detectando">("detectando");
+  const [mode, setMode] = useState<"demo" | "ia" | "ollama" | "detectando">("detectando");
   const [busy, setBusy] = useState(false);
   const [listening, setListening] = useState(false);
   const [speakReplies, setSpeakReplies] = useState(false);
@@ -82,6 +83,7 @@ export default function Home() {
       const data = (await response.json()) as ChatResponse;
       if (!response.ok) throw new Error(data.error ?? "Error al conectar con el servidor");
       setMode(data.mode);
+      setError(data.notice ?? "");
       setCart(data.order ? [] : data.cart);
       setMessages((previous) => [...previous, { role: "assistant", text: data.reply }]);
       say(data.reply);
@@ -136,8 +138,8 @@ export default function Home() {
   return (
     <div className="shell">
       <header className="header">
-        <div className="brand"><div className="brandmark">◉</div><div><strong>OrderVoice <span>AI</span></strong><small>Panel de pruebas · v0.2</small></div></div>
-        <div className="header-right"><span className="status-dot" /><span>Servidor de desarrollo</span><span className={`mode mode-${mode}`}>{mode === "ia" ? "IA ACTIVADA" : mode === "demo" ? "MODO DEMO" : "MODO POR DETECTAR"}</span></div>
+        <div className="brand"><div className="brandmark">◉</div><div><strong>OrderVoice <span>AI</span></strong><small>Panel de pruebas · v0.3</small></div></div>
+        <div className="header-right"><span className="status-dot" /><span>Servidor de desarrollo</span><span className={`mode mode-${mode}`}>{mode === "ollama" ? "OLLAMA LOCAL" : mode === "ia" ? "IA ACTIVADA" : mode === "demo" ? "MODO DEMO" : "MODO POR DETECTAR"}</span></div>
       </header>
 
       <div className="intro"><div><span className="eyebrow">PRIMER PROTOTIPO</span><h1>Tu recepcionista, <em>siempre disponible.</em></h1><p>Simula pedidos de una pizzería, conversa y comprueba cómo funciona el sistema antes de añadir llamadas telefónicas.</p></div><div className="intro-chip">🍕 <strong>Pizza Demo</strong><small>Restaurante ficticio</small></div></div>
