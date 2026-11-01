@@ -8,7 +8,8 @@
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "test:orders": "node scripts/test-order-engine.cjs",
-    "test:ollama": "node scripts/test-ollama.cjs"
+    "test:ollama": "node scripts/test-ollama.cjs",
+    "test:dialogue": "node scripts/test-dialogue.cjs"
   },
   "dependencies": {
     "next": "^16.0.0",
