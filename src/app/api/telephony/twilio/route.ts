@@ -1,7 +1,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { POST as chatPOST } from "@/app/api/chat/route";
-import type { CartItem } from "@/lib/menu";
+import { productById, type CartItem } from "@/lib/menu";
 import type { PendingPizza } from "@/lib/pizza-dialogue";
 
 export const runtime = "nodejs";
@@ -47,6 +47,21 @@ function validSignature(url: string, params: URLSearchParams, signature: string,
   const actual = Buffer.from(signature, "utf8");
   const expectedBytes = Buffer.from(expected, "utf8");
   return actual.length === expectedBytes.length && timingSafeEqual(actual, expectedBytes);
+}
+
+// En llamadas telefónicas es importante repetir los artículos añadidos,
+// no solo decir "los productos indicados". El carrito validado sigue siendo
+// la única fuente de verdad para cantidades y precios.
+function describeAdditions(before: CartItem[], after: CartItem[]): string | null {
+  const previous = new Map(before.map((item) => [item.productId, item.quantity]));
+  const additions = after.flatMap((item) => {
+    const difference = item.quantity - (previous.get(item.productId) ?? 0);
+    const product = productById(item.productId);
+    return difference > 0 && product
+      ? [`${difference} ${difference === 1 ? "unidad" : "unidades"} de ${product.name.toLowerCase()}`]
+      : [];
+  });
+  return additions.length ? `Añadí ${additions.join(" y ")}` : null;
 }
 
 function cleanup() {
@@ -113,9 +128,14 @@ export async function POST(request: NextRequest) {
       cart?: CartItem[]; pending?: PendingPizza | null; reply?: string;
       order?: unknown;
     };
+    const oldCart = session.cart;
     session.cart = data.cart ?? session.cart;
     session.pending = data.pending ?? null;
-    const reply = data.reply?.trim() || "Disculpa, ¿puedes repetir tu pedido?";
+    let reply = data.reply?.trim() || "Disculpa, ¿puedes repetir tu pedido?";
+    if (reply.startsWith("Añadí los productos indicados.") && data.cart) {
+      const details = describeAdditions(oldCart, session.cart);
+      if (details) reply = reply.replace("Añadí los productos indicados.", `${details}.`);
+    }
     session.history.push({ role: "user", text: speech }, { role: "assistant", text: reply });
     session.history = session.history.slice(-8);
     if (data.order) {
