@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { MENU, type CartItem } from "./menu";
-import type { Command } from "./order-engine";
+import { guardDestructiveIntent, type Command } from "./order-engine";
 
 // El modelo solo interpreta la intención. El motor de pedidos valida y calcula los precios.
 const CommandSchema = z.object({
@@ -94,13 +94,6 @@ export async function understandWithOllama(
   if (typeof raw !== "string") throw new Error("Ollama no devolvió JSON");
   const command = CommandSchema.parse(JSON.parse(raw));
 
-  // Protección adicional: cambios destructivos solo con intención explícita.
-  const normalized = message.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-  if (command.action === "confirm" && !/\b(confirmo|confirmar|confirmado|finalizar|hacer el pedido|realizar el pedido)\b/.test(normalized)) {
-    return { action: "question", items: [], answer: "¿Deseas confirmar el pedido actual?", needsClarification: true };
-  }
-  if (command.action === "clear" && !/\b(cancelar|vaciar|borrar todo|limpiar)\b/.test(normalized)) {
-    return { action: "question", items: [], answer: "¿Quieres vaciar el carrito?", needsClarification: true };
-  }
-  return command;
+  // También se aplica en /api/chat para cubrir las rutas demo y locales.
+  return guardDestructiveIntent(message, command);
 }
