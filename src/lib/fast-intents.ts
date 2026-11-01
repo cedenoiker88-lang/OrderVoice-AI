@@ -20,7 +20,7 @@ function command(action: Command["action"], items: Command["items"] = [], answer
 export function fastUnderstand(message: string): Command | null {
   const text = normalize(message);
 
-  if (/^(?:cuanto (?:es|cuesta|sale|llevo|debo|tengo que pagar)(?: (?:en total|todo|el pedido|mi pedido))?|cuanto seria(?: en total)?|cuanto voy a pagar|cual es (?:el )?total(?: del pedido)?|dime (?:el )?total|total(?: del pedido)?|precio total)$/.test(text)) {
+  if (/^(?:cuanto (?:es|cuesta|sale|llevo|debo|tengo que pagar)(?: (?:en total|el total|todo|el pedido|mi pedido))?|cuanto seria(?: en total)?|cuanto voy a pagar|cual es (?:el )?total(?: del pedido)?|dime (?:el )?total|total(?: del pedido)?|precio total)$/.test(text)) {
     return command("total");
   }
 
