@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { MENU, calculateTotal, formatUSD, productById, type CartItem, type ConfirmedOrder } from "@/lib/menu";
+import type { PendingPizza } from "@/lib/pizza-dialogue";
 
 type ChatMessage = { role: "assistant" | "user"; text: string };
 type ChatResponse = {
@@ -10,6 +11,7 @@ type ChatResponse = {
   order?: ConfirmedOrder;
   mode: "demo" | "ia" | "ollama";
   notice?: string;
+  pending?: PendingPizza | null;
   error?: string;
 };
 
@@ -38,6 +40,7 @@ export default function Home() {
   const [messages, setMessages] = useState<ChatMessage[]>([initialMessage]);
   const [input, setInput] = useState("");
   const [cart, setCart] = useState<CartItem[]>([]);
+  const [pending, setPending] = useState<PendingPizza | null>(null);
   const [orders, setOrders] = useState<ConfirmedOrder[]>([]);
   const [mode, setMode] = useState<"demo" | "ia" | "ollama" | "detectando">("detectando");
   const [busy, setBusy] = useState(false);
@@ -201,11 +204,12 @@ export default function Home() {
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message, cart, history: messages.slice(-8) })
+        body: JSON.stringify({ message, cart, pending, history: messages.slice(-8) })
       });
       const data = (await response.json()) as ChatResponse;
       if (!response.ok) throw new Error(data.error ?? "Error al conectar con el servidor");
       setMode(data.mode);
+      setPending(data.pending ?? null);
       setError(data.notice ?? "");
       setCart(data.order ? [] : data.cart);
       setMessages((previous) => [...previous, { role: "assistant", text: data.reply }]);
@@ -254,6 +258,7 @@ export default function Home() {
 
   function reset() {
     if (voiceRef.current) stopVoiceSession();
+    setPending(null);
     setCart([]);
     setMessages([initialMessage]);
     setError("");
