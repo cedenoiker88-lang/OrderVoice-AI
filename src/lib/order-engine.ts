@@ -38,7 +38,7 @@ function parseLine(text: string): { line?: Line; error?: string } {
     return { line: { productId: "gaseosa", quantity } };
   }
   const flavor = ["pepperoni", "hawaiana", "margarita"].find((item) => segment.includes(item));
-  const size = /\bfamiliares?\b/.test(segment) ? "familiar"
+  const size = /\bfamiliar(?:es)?\b/.test(segment) ? "familiar"
     : /\bmedianas?\b/.test(segment) ? "mediana" : undefined;
   if (flavor && size) return { line: { productId: `${flavor}-${size}`, quantity } };
   if (PRODUCT_WORDS.test(segment) || size) {
