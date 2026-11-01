@@ -3,7 +3,7 @@ import OpenAI from "openai";
 import { z } from "zod";
 import { zodTextFormat } from "openai/helpers/zod";
 import { MENU, calculateTotal, sanitizeCart, type ConfirmedOrder } from "@/lib/menu";
-import { applyCommand, demoUnderstand, type Command } from "@/lib/order-engine";
+import { applyCommand, demoUnderstand, guardDestructiveIntent, type Command } from "@/lib/order-engine";
 import { understandWithOllama } from "@/lib/ollama";
 import { advancePizzaConversation, sanitizePending } from "@/lib/pizza-dialogue";
 import { fastUnderstand } from "@/lib/fast-intents";
@@ -83,8 +83,9 @@ export async function POST(request: NextRequest) {
       }
     }
     const interpretMs = Math.round(performance.now() - interpretationStartedAt);
-    if (command.action === "clear" || command.action === "confirm") pending = null;
-    const result = applyCommand(cart, command);
+    const safeCommand = guardDestructiveIntent(message, command);
+    if (safeCommand.action === "clear" || safeCommand.action === "confirm") pending = null;
+    const result = applyCommand(cart, safeCommand);
     let order: ConfirmedOrder | undefined;
     if (result.confirmed) {
       order = { id: crypto.randomUUID().slice(0, 8).toUpperCase(), createdAt: new Date().toISOString(), items: cart, totalCents: calculateTotal(cart) };
