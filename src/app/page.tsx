@@ -43,7 +43,7 @@ export default function Home() {
   const [listening, setListening] = useState(false);
   const [speakReplies, setSpeakReplies] = useState(false);
   const [error, setError] = useState("");
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const conversationRef = useRef<HTMLDivElement>(null);
   const busyRef = useRef(false);
 
   useEffect(() => {
@@ -55,7 +55,12 @@ export default function Home() {
       }
     } catch { /* datos locales inválidos: no bloquea la demo */ }
   }, []);
-  useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, busy]);
+  useEffect(() => {
+    // Desplazar solo el historial del chat, nunca toda la página del navegador.
+    const conversation = conversationRef.current;
+    if (!conversation) return;
+    conversation.scrollTo({ top: conversation.scrollHeight, behavior: "smooth" });
+  }, [messages, busy]);
 
   function say(text: string) {
     if (!speakReplies || !window.speechSynthesis) return;
@@ -147,10 +152,9 @@ export default function Home() {
       <main className="dashboard">
         <section className="panel chat-panel" aria-label="Asistente de pedidos">
           <div className="panel-heading"><div><h2>Asistente de pedidos</h2><p>Chat de simulación · Sin llamadas reales</p></div><button className="secondary reset" onClick={reset} disabled={busy}>↻ Reiniciar</button></div>
-          <div className="conversation" role="log" aria-live="polite">
+          <div className="conversation" ref={conversationRef} role="log" aria-live="polite">
             {messages.map((message, index) => <div className={`message ${message.role}`} key={index}><span className="message-avatar">{message.role === "assistant" ? "✦" : "TÚ"}</span><div className="message-body"><span className="speaker">{message.role === "assistant" ? "OrderVoice" : "Cliente"}</span><p>{message.text}</p></div></div>)}
             {busy && <div className="thinking">OrderVoice está procesando tu pedido…</div>}
-            <div ref={messagesEndRef}/>
           </div>
           {error && <p className="error" role="alert">⚠ {error}</p>}
           <form className="composer" onSubmit={(event) => {event.preventDefault(); void send(input);}}>
