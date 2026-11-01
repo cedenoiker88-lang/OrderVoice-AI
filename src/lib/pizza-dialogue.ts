@@ -47,7 +47,7 @@ function question(text: string, pending: PendingPizza | null): PizzaTurn {
 export function advancePizzaConversation(message: string, pending: PendingPizza | null, cart: CartItem[] = []): PizzaTurn | null {
   const text = clean(message);
   const pizzaWord = /\bpizzas?\b/.test(text);
-  const flavor: PizzaFlavor | undefined = /\bpepperoni\b/.test(text) ? "pepperoni"
+  const flavor: PizzaFlavor | undefined = /\bpep{1,2}eroni\b/.test(text) ? "pepperoni"
     : /\bhawaianas?\b/.test(text) ? "hawaiana"
     : /\bmargaritas?\b/.test(text) ? "margarita" : undefined;
   const size: PizzaSize | undefined = /\bfamiliar(?:es)?\b/.test(text) ? "familiar"
