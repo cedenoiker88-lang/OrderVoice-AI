@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
     // Un pedido incompleto mantiene sus campos pendientes entre mensajes.
     // El motor determinista resuelve aclaraciones antes de consultar al modelo.
     const incomingPending = sanitizePending(raw.pending);
-    const pizzaTurn = advancePizzaConversation(message, incomingPending);
+    const pizzaTurn = advancePizzaConversation(message, incomingPending, cart);
     let pending = pizzaTurn ? pizzaTurn.pending : incomingPending;
     const configuredProvider = process.env.ORDERVOICE_PROVIDER ?? "ollama";
     let mode: "ollama" | "demo" | "ia" = "demo";
