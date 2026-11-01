@@ -24,6 +24,8 @@ type SpeechLike = {
   onresult: ((event: SpeechResultEvent) => void) | null;
   onerror: ((event: { error: string }) => void) | null;
   onend: (() => void) | null;
+  onspeechstart: (() => void) | null;
+  onspeechend: (() => void) | null;
   start: () => void;
   stop: () => void;
 };
@@ -46,6 +48,8 @@ export default function Home() {
   const [mode, setMode] = useState<"demo" | "ia" | "ollama" | "local" | "detectando">("detectando");
   const [lastTiming, setLastTiming] = useState<{ requestMs: number; serverMs: number | null; interpretMs: number | null; mode: ChatResponse["mode"] } | null>(null);
   const [lastVoiceDelayMs, setLastVoiceDelayMs] = useState<number | null>(null);
+  const [lastRecognitionMs, setLastRecognitionMs] = useState<number | null>(null);
+  const [lastSpeechToTextMs, setLastSpeechToTextMs] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [listening, setListening] = useState(false);
   const [speakReplies, setSpeakReplies] = useState(false);
@@ -105,17 +109,29 @@ export default function Home() {
     }
     try {
       let heard = false;
+      let startedSpeakingAt: number | null = null;
+      let finishedSpeakingAt: number | null = null;
       const recognition = new SpeechAPI();
       recognitionRef.current = recognition;
       recognition.lang = "es-EC";
       recognition.interimResults = false;
       recognition.continuous = false;
+      recognition.onspeechstart = () => {
+        startedSpeakingAt = performance.now();
+        finishedSpeakingAt = null;
+      };
+      recognition.onspeechend = () => {
+        finishedSpeakingAt = performance.now();
+      };
       recognition.onresult = (event) => {
         if (heard || !voiceRef.current || generation !== generationRef.current) return;
         const phrase = event.results[0]?.[0]?.transcript?.trim();
         if (!phrase) return;
         heard = true;
-        voiceTurnStartedRef.current = performance.now();
+        const transcriptAt = performance.now();
+        setLastRecognitionMs(startedSpeakingAt === null ? null : Math.round(transcriptAt - startedSpeakingAt));
+        setLastSpeechToTextMs(finishedSpeakingAt === null ? null : Math.round(transcriptAt - finishedSpeakingAt));
+        voiceTurnStartedRef.current = transcriptAt;
         setLastVoiceDelayMs(null);
         setListening(false);
         recognition.stop();
@@ -302,6 +318,8 @@ export default function Home() {
     setMessages([initialMessage]);
     setLastTiming(null);
     setLastVoiceDelayMs(null);
+    setLastRecognitionMs(null);
+    setLastSpeechToTextMs(null);
     setError("");
   }
 
@@ -333,7 +351,9 @@ export default function Home() {
             <span>Motor: <strong>{lastTiming.mode === "local" ? "Reglas locales" : lastTiming.mode === "ollama" ? "Ollama" : lastTiming.mode === "ia" ? "IA externa" : "Demo"}</strong></span>
             {lastTiming.serverMs !== null && <span>Servidor: <strong>{lastTiming.serverMs} ms</strong></span>}
             {lastTiming.interpretMs !== null && <span>Interpretación: <strong>{lastTiming.interpretMs} ms</strong></span>}
-            {lastVoiceDelayMs !== null && <span>Voz desde transcripción: <strong>{lastVoiceDelayMs} ms</strong></span>}
+            {lastRecognitionMs !== null && <span>Voz → texto: <strong>{lastRecognitionMs} ms</strong></span>}
+            {lastSpeechToTextMs !== null && <span>Fin del habla → texto: <strong>{lastSpeechToTextMs} ms</strong></span>}
+            {lastVoiceDelayMs !== null && <span>Texto → inicio de voz: <strong>{lastVoiceDelayMs} ms</strong></span>}
           </div>}
           {error && <p className="error" role="alert">⚠ {error}</p>}
           <form className="composer" onSubmit={(event) => {event.preventDefault(); void send(input);}}>
