@@ -42,6 +42,8 @@ async function run() {
     assert.equal(command.items[0].quantity, 2);
     assert.equal(request.model, "llama3.2:3b");
     assert.equal(request.stream, false);
+    assert.equal(request.keep_alive, "15m");
+    assert.equal(request.options.num_ctx, 3072);
     assert.equal(engine.applyCommand([], command).cart[0].quantity, 2);
 
     // El motor nunca acepta productos que no existen aunque el modelo los devuelva.
