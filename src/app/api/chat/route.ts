@@ -4,6 +4,7 @@ import { z } from "zod";
 import { zodTextFormat } from "openai/helpers/zod";
 import { MENU, calculateTotal, sanitizeCart, type ConfirmedOrder } from "@/lib/menu";
 import { applyCommand, demoUnderstand, type Command } from "@/lib/order-engine";
+import { understandWithOllama } from "@/lib/ollama";
 
 export const runtime = "nodejs";
 
@@ -42,16 +43,36 @@ export async function POST(request: NextRequest) {
     const message = typeof raw.message === "string" ? raw.message.trim() : "";
     if (!message || message.length > 500) return NextResponse.json({ error: "El mensaje debe tener entre 1 y 500 caracteres" }, { status: 400 });
     const cart = sanitizeCart(raw.cart);
-    const mode = process.env.OPENAI_API_KEY ? "ia" : "demo";
-    const command = mode === "ia"
-      ? await understandWithAI(message, cart, raw.history)
-      : demoUnderstand(message);
+    // Ollama local por defecto; OpenAI solo si se selecciona explícitamente.
+    const configuredProvider = process.env.ORDERVOICE_PROVIDER ?? "ollama";
+    let mode: "ollama" | "demo" | "ia" = "demo";
+    let notice: string | undefined;
+    let command: Command;
+    if (configuredProvider === "demo") {
+      command = demoUnderstand(message);
+    } else if (configuredProvider === "openai" && process.env.OPENAI_API_KEY) {
+      command = await understandWithAI(message, cart, raw.history);
+      mode = "ia";
+    } else {
+      const history = Array.isArray(raw.history) ? raw.history.slice(-6)
+        .filter((entry): entry is Record<string, unknown> => !!entry && typeof entry === "object")
+        .filter((entry) => (entry.role === "user" || entry.role === "assistant") && typeof entry.text === "string")
+        .map((entry) => ({ role: entry.role as "user" | "assistant", text: String(entry.text).slice(0, 400) })) : [];
+      try {
+        command = await understandWithOllama(message, cart, history);
+        mode = "ollama";
+      } catch (error) {
+        console.warn("Ollama local no disponible; modo demo:", error);
+        command = demoUnderstand(message);
+        notice = "Ollama no respondió. Estoy usando las reglas básicas de demostración; no se ha enviado información a servicios de pago.";
+      }
+    }
     const result = applyCommand(cart, command);
     let order: ConfirmedOrder | undefined;
     if (result.confirmed) {
       order = { id: crypto.randomUUID().slice(0, 8).toUpperCase(), createdAt: new Date().toISOString(), items: cart, totalCents: calculateTotal(cart) };
     }
-    return NextResponse.json({ ...result, order, mode });
+    return NextResponse.json({ ...result, order, mode, notice });
   } catch (error) {
     console.error("/api/chat:", error);
     return NextResponse.json({ error: "No se pudo procesar el mensaje. Comprueba la conexión y la configuración de tu API." }, { status: 500 });
