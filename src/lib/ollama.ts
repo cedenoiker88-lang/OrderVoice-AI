@@ -62,13 +62,13 @@ Si el mensaje no cabe en una sola acción, usa question para aclarar. Responde e
 type HistoryMessage = { role: "user" | "assistant"; text: string };
 
 export async function understandWithOllama(
-  message: string, cart: CartItem[], history: HistoryMessage[]
+  message: string, cart: CartItem[], history: HistoryMessage[], timeoutMs = 90_000
 ): Promise<Command> {
   // Conexión solo al Ollama local: no se envían datos a servicios de terceros.
   const response = await fetch("http://127.0.0.1:11434/api/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    signal: AbortSignal.timeout(90000),
+    signal: AbortSignal.timeout(timeoutMs),
     body: JSON.stringify({
       model: process.env.OLLAMA_MODEL || "llama3.2:3b",
       stream: false,
