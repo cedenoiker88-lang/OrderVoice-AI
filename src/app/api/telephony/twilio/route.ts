@@ -129,6 +129,22 @@ function cleanup() {
   }
 }
 
+// Twilio espera máximo 15 s por webhook. Reservamos tiempo para generar la voz
+// o usar el respaldo, evitando que una inferencia lenta finalice la llamada.
+async function chatWithDeadline(request: NextRequest): Promise<NextResponse> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      chatPOST(request),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error("PHONE_INTERPRET_TIMEOUT")), 6_500);
+      })
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 export async function POST(request: NextRequest) {
   const token = process.env.TWILIO_AUTH_TOKEN;
   const publicBase = process.env.TWILIO_PUBLIC_BASE_URL?.replace(/\/$/, "");
@@ -203,10 +219,11 @@ export async function POST(request: NextRequest) {
         message: speech,
         cart: session.cart,
         pending: session.pending,
-        history: session.history.slice(-8)
+        history: session.history.slice(-8),
+        telephoneMode: true
       })
     });
-    const result = await chatPOST(internalRequest);
+    const result = await chatWithDeadline(internalRequest);
     if (!result.ok) throw new Error("El motor de pedidos no respondió");
     const data = await result.json() as {
       cart?: CartItem[]; pending?: PendingPizza | null; reply?: string;
@@ -228,8 +245,11 @@ export async function POST(request: NextRequest) {
     }
     return listen(reply, usingTrial ? trialSecret : null, skipTts);
   } catch (error) {
-    console.error("La llamada de prueba no pudo procesar el turno:", error);
-    sessions.delete(callSid);
-    return farewell("Disculpa, surgió un problema técnico. Por favor intenta de nuevo más tarde.", skipTts);
+    // Mantener la sesión y el carrito. Un error temporal no debe cortar
+    // la llamada ni eliminar el pedido previo. Usar <Say> sin esperar API de voz.
+    console.warn("[Twilio webhook] Turno no completado; se mantiene el carrito.", {
+      reason: error instanceof Error ? error.message : "Error"
+    });
+    return listen("Disculpa, tuve una demora y no cambié tu pedido. Por favor, repite el cambio.", usingTrial ? trialSecret : null, true);
   }
 }
