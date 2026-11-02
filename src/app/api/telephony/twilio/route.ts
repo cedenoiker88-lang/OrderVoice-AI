@@ -6,6 +6,7 @@ import { POST as chatPOST } from "@/app/api/chat/route";
 import { productById, type CartItem } from "@/lib/menu";
 import type { PendingPizza } from "@/lib/pizza-dialogue";
 import { makePhoneAudioUrl } from "@/lib/phone-tts";
+import { beginPhoneVoiceJob } from "@/lib/phone-voice-jobs";
 import { savePhoneClip, telephoneWavFromPcm24 } from "@/lib/phone-audio";
 
 export const runtime = "nodejs";
@@ -85,6 +86,29 @@ async function listen(prompt: string, trialSecret: string | null = null, skipTts
 }
 async function farewell(text: string, skipTts = false, maxWaitMs?: number) {
   return twiml((await spoken(text, skipTts, maxWaitMs)) + "<Hangup/>");
+}
+
+function queueSpeech(text: string, trialSecret: string | null, farewellTurn: boolean): NextResponse | null {
+  const base = process.env.TWILIO_PUBLIC_BASE_URL?.replace(/\/$/, "");
+  if (!base?.startsWith("https://")) return null;
+  const action = base + "/api/telephony/twilio" +
+    (trialSecret ? "?trial_key=" + encodeURIComponent(trialSecret) : "");
+  const jobId = beginPhoneVoiceJob(text, action, farewellTurn);
+  if (!jobId) return null;
+  // Twilio recibe una respuesta TwiML inmediata, mientras la API crea
+  // el audio fuera de la solicitud que tiene un límite de 15 segundos.
+  const statusUrl = base + "/api/telephony/voice-status?id=" + jobId;
+  return twiml(`<Pause length="1"/><Redirect method="GET">${xml(statusUrl)}</Redirect>`);
+}
+
+async function respondInConversation(text: string, trialSecret: string | null, skipTts: boolean, maxWaitMs: number) {
+  const queued = !skipTts ? queueSpeech(text, trialSecret, false) : null;
+  return queued ?? listen(text, trialSecret, skipTts, maxWaitMs);
+}
+
+async function respondAndFinish(text: string, trialSecret: string | null, skipTts: boolean, maxWaitMs: number) {
+  const queued = !skipTts ? queueSpeech(text, trialSecret, true) : null;
+  return queued ?? farewell(text, skipTts, maxWaitMs);
 }
 
 function validSignature(url: string, params: URLSearchParams, signature: string, token: string) {
@@ -214,10 +238,10 @@ export async function POST(request: NextRequest) {
     }
   }
   session.updatedAt = Date.now();
-  if (!speech) return listen("No te escuché bien. Por favor, repite tu pedido.", usingTrial ? trialSecret : null, skipTts, remainingTtsMs());
+  if (!speech) return respondInConversation("No te escuché bien. Por favor, repite tu pedido.", usingTrial ? trialSecret : null, skipTts, remainingTtsMs());
   if (session.turns >= MAX_TURNS) {
     sessions.delete(callSid);
-    return farewell("Hemos llegado al límite de esta llamada de prueba. Gracias por comunicarte.", skipTts, remainingTtsMs());
+    return respondAndFinish("Hemos llegado al límite de esta llamada de prueba. Gracias por comunicarte.", usingTrial ? trialSecret : null, skipTts, remainingTtsMs());
   }
   session.turns += 1;
   try {
@@ -250,9 +274,9 @@ export async function POST(request: NextRequest) {
     session.history = session.history.slice(-8);
     if (data.order) {
       sessions.delete(callSid);
-      return farewell(reply, skipTts, remainingTtsMs());
+      return respondAndFinish(reply, usingTrial ? trialSecret : null, skipTts, remainingTtsMs());
     }
-    return listen(reply, usingTrial ? trialSecret : null, skipTts, remainingTtsMs());
+    return respondInConversation(reply, usingTrial ? trialSecret : null, skipTts, remainingTtsMs());
   } catch (error) {
     // Mantener la sesión y el carrito. Un error temporal no debe cortar
     // la llamada ni eliminar el pedido previo. Usar <Say> sin esperar API de voz.
