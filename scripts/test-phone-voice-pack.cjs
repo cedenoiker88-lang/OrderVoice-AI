@@ -38,7 +38,7 @@ async function main() {
   const url = origin + "/api/telephony/twilio";
   const sid = "CA" + randomBytes(16).toString("hex");
 
-  async function request(utterance, expected) {
+  async function request(utterance, expected, greeting = false) {
     const params = new URLSearchParams({ CallSid: sid });
     if (utterance !== null) params.set("SpeechResult", utterance);
     const signatureInput = [...params.keys()].sort().reduce((s, key) => s + key + params.get(key), url);
@@ -47,7 +47,9 @@ async function main() {
       method: "POST",
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
-        "X-Twilio-Signature": signature
+        "X-Twilio-Signature": signature,
+        ...(greeting ? {"X-OrderVoice-Test-No-TTS": "1"} :
+          {"X-OrderVoice-Test-Cached-Only": "1"})
       },
       body: params.toString(),
       signal: AbortSignal.timeout(14_000)
@@ -55,6 +57,10 @@ async function main() {
     assert.equal(response.status, 200, "El webhook devolvió HTTP " + response.status);
     const twiml = await response.text();
     assert.ok(twiml.includes("<Gather"), "Debe continuar escuchando al cliente.");
+    if (greeting) {
+      console.log("OK: saludo inicial protegido HTTP 200, sin síntesis nueva.");
+      return;
+    }
     assert.ok(!twiml.includes("<Redirect"), "No debe esperar la síntesis de OpenAI.");
     const play = twiml.match(/<Play>([^<]+)<\/Play>/)?.[1];
     assert.ok(play, "Debe incluir audio precargado (<Play>), no Twilio Say.");
@@ -72,7 +78,7 @@ async function main() {
   }
 
   // El saludo tiene su propia muestra ya generada.
-  await request(null, "Hola, soy OrderVoice");
+  await request(null, "saludo inicial", true);
   await request("Quiero una pizza de pepperoni familiar", "$14,00");
   await request("Mejor cámbiala por una pizza hawaiana mediana", "$10,00");
   await request("Cuánto es el total", "$10,00");
