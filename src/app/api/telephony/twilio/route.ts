@@ -33,7 +33,12 @@ function xml(text: string): string {
 }
 function twiml(body: string) {
   return new NextResponse(`<?xml version="1.0" encoding="UTF-8"?><Response>${body}</Response>`, {
-    headers: { "Content-Type": "text/xml; charset=utf-8", "Cache-Control": "no-store" }
+    headers: {
+      "Content-Type": "text/xml; charset=utf-8",
+      "Cache-Control": "no-store",
+      // Diagnóstico inofensivo para verificar que Next.js cargó .env.local.
+      "X-OrderVoice-Phone-Fast-Mode": process.env.ORDERVOICE_PHONE_FAST_MODE === "enabled" ? "enabled" : "disabled"
+    }
   });
 }
 const DEMO_GREETING = "Hola, soy OrderVoice, tu asistente virtual. ¿Qué deseas pedir hoy?";
