@@ -218,3 +218,58 @@ webhooks telefónicos que superan 15 s.
 La voz de respaldo puede seguir sonando distinta. Para conseguir uniformidad
 incluso si falla la API hay que implementar otro respaldo de audio pregrabado
 o un motor de voz local; ampliar el tiempo no es una garantía absoluta.
+
+
+## Actualización: generación de voz sin bloquear el webhook (noviembre 2026)
+
+Si `npm run test:phone:voice` imprimía `VOZ DE RESPALDO: Twilio Say`
+después de unos siete segundos, significa que el pedido se entendió, pero
+**la API de voz no devolvió el audio dentro del tiempo de espera**.
+
+El flujo local ahora funciona así:
+
+1. Se procesa la intención del pedido y se conserva el carrito.
+2. El webhook contesta rápidamente con un `<Redirect>` temporal.
+3. OpenAI genera la voz en un trabajo **en memoria** con máximo 25 s.
+4. Twilio consulta `GET /api/telephony/voice-status?id=...` y recibe
+   `<Pause>` hasta que el audio esté listo.
+5. Cuando lo está, Twilio recibe `<Gather><Play>...</Play></Gather>`,
+   escucha la respuesta y puede continuar la conversación en español.
+6. Si la API falla, se mantiene la voz de respaldo de Twilio, pero ya no
+   se usa solo porque el audio exceda el límite de 6,5 s del webhook.
+
+El saludo sigue reutilizando `.ordervoice-cache/greeting.wav` sin hacer
+una solicitud de TTS nueva. Los trabajos en curso utilizan identificadores
+aleatorios y caducan a los 90 segundos. **Este prototipo necesita mantener
+un único proceso local Next.js activo; no es una cola persistente para
+plataformas serverless.**
+
+Ejecuta en este orden:
+
+```powershell
+git pull origin dev/v0.6
+npm run typecheck
+npm run test:phone:change
+npm run test:phone:audio
+```
+
+Con Next.js reiniciado, y ngrok y Ollama activos:
+
+```powershell
+npm run test:phone:voice
+```
+
+La última prueba hace **una** solicitud de síntesis a OpenAI (facturable),
+pero ninguna llamada. Puede durar 25-35 s porque ahora comprueba que
+Twilio puede **esperar** mientras se genera audio. El resultado correcto es
+`OK: respuesta de voz OpenAI con Play, HTTP 200, WAV 8 kHz.`
+
+Si pasa, haz **una sola** llamada real. En ngrok verás las rutas:
+`POST /api/telephony/twilio`,
+`GET /api/telephony/voice-status`,
+`GET /api/telephony/audio`.
+
+**Limitación**: la conversación puede tener pausas de varios segundos.
+Para producción habrá que utilizar streaming telefónico de audio y una
+cola/servicio de trabajos compartido. No difundas los tokens de prueba o
+IDs completos de clips al enviar capturas.
