@@ -7,6 +7,7 @@ import { productById, type CartItem } from "@/lib/menu";
 import type { PendingPizza } from "@/lib/pizza-dialogue";
 import { makePhoneAudioUrl } from "@/lib/phone-tts";
 import { beginPhoneVoiceJob } from "@/lib/phone-voice-jobs";
+import { preparedVoiceUrl } from "@/lib/phone-voice-pack";
 import { savePhoneClip, telephoneWavFromPcm24 } from "@/lib/phone-audio";
 
 export const runtime = "nodejs";
@@ -93,6 +94,15 @@ function queueSpeech(text: string, trialSecret: string | null, farewellTurn: boo
   if (!base?.startsWith("https://")) return null;
   const action = base + "/api/telephony/twilio" +
     (trialSecret ? "?trial_key=" + encodeURIComponent(trialSecret) : "");
+  // Si preparamos esta frase antes de llamar, Twilio puede reproducirla
+  // en seguida, sin esperar ni cobrar otra solicitud de generación de voz.
+  const preRecorded = preparedVoiceUrl(text);
+  if (preRecorded) {
+    console.info("[OrderVoice voz] Fuente: respuesta OpenAI pregrabada (sin TTS en esta llamada).");
+    const play = `<Play>${xml(preRecorded)}</Play>`;
+    if (farewellTurn) return twiml(play + "<Hangup/>");
+    return twiml(`<Gather input="speech" language="es-ES" speechTimeout="auto" timeout="6" actionOnEmptyResult="true" method="POST" action="${xml(action)}">${play}</Gather>${say("No recibí respuesta. Terminamos esta llamada de prueba. Hasta luego.")}<Hangup/>`);
+  }
   const jobId = beginPhoneVoiceJob(text, action, farewellTurn);
   if (!jobId) return null;
   // Twilio recibe una respuesta TwiML inmediata, mientras la API crea
