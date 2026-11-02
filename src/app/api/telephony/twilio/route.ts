@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { POST as chatPOST } from "@/app/api/chat/route";
 import { productById, type CartItem } from "@/lib/menu";
 import type { PendingPizza } from "@/lib/pizza-dialogue";
+import { makePhoneAudioUrl } from "@/lib/phone-tts";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -33,13 +34,21 @@ function say(text: string) {
   // Voz básica del proveedor; más adelante se reemplaza por Piper local.
   return `<Say language="es-ES" voice="woman">${xml(text.slice(0, 700))}</Say>`;
 }
-function listen(prompt: string, trialSecret: string | null = null) {
+async function spoken(text: string): Promise<string> {
+  // Si OpenAI no está habilitado o supera el límite de espera, conserva <Say>
+  // y permite que el cliente siga conversando sin depender de una API externa.
+  const url = await makePhoneAudioUrl(text);
+  return url ? `<Play>${xml(url)}</Play>` : say(text);
+}
+async function listen(prompt: string, trialSecret: string | null = null) {
   const base = process.env.TWILIO_PUBLIC_BASE_URL?.replace(/\/$/, "");
   const path = "/api/telephony/twilio";
-  // Try out Voice puede recuperar TwiML a través de un intermediario que no
-  // conserva la firma. Solo en el modo de prueba preservamos una clave efímera.
   const action = base ? base + path + (trialSecret ? "?trial_key=" + encodeURIComponent(trialSecret) : "") : "";
-  return twiml(`<Gather input="speech" language="es-ES" speechTimeout="auto" timeout="6" actionOnEmptyResult="true" method="POST" action="${xml(action)}">${say(prompt)}</Gather>${say("No recibí respuesta. Terminamos esta llamada de prueba. Hasta luego.")}<Hangup/>`);
+  const promptAudio = await spoken(prompt);
+  return twiml(`<Gather input="speech" language="es-ES" speechTimeout="auto" timeout="6" actionOnEmptyResult="true" method="POST" action="${xml(action)}">${promptAudio}</Gather>${say("No recibí respuesta. Terminamos esta llamada de prueba. Hasta luego.")}<Hangup/>`);
+}
+async function farewell(text: string) {
+  return twiml((await spoken(text)) + "<Hangup/>");
 }
 
 function validSignature(url: string, params: URLSearchParams, signature: string, token: string) {
@@ -143,14 +152,14 @@ export async function POST(request: NextRequest) {
     session = { cart: [], pending: null, history: [], turns: 0, updatedAt: Date.now() };
     sessions.set(callSid, session);
     if (!speech) {
-      return listen("Hola, soy OrderVoice, asistente de Pizza Demo. Esta es una llamada de prueba. ¿Qué deseas ordenar?", usingTrial ? trialSecret : null);
+      return listen("Hola, soy OrderVoice, asistente virtual con voz generada por inteligencia artificial de Pizza Demo. Esta es una llamada de prueba. ¿Qué deseas ordenar?", usingTrial ? trialSecret : null);
     }
   }
   session.updatedAt = Date.now();
   if (!speech) return listen("No te escuché bien. Por favor, repite tu pedido.", usingTrial ? trialSecret : null);
   if (session.turns >= MAX_TURNS) {
     sessions.delete(callSid);
-    return twiml(say("Hemos llegado al límite de esta llamada de prueba. Gracias por comunicarte.") + "<Hangup/>");
+    return farewell("Hemos llegado al límite de esta llamada de prueba. Gracias por comunicarte.");
   }
   session.turns += 1;
   try {
@@ -182,12 +191,12 @@ export async function POST(request: NextRequest) {
     session.history = session.history.slice(-8);
     if (data.order) {
       sessions.delete(callSid);
-      return twiml(say(reply) + "<Hangup/>");
+      return farewell(reply);
     }
     return listen(reply, usingTrial ? trialSecret : null);
   } catch (error) {
     console.error("La llamada de prueba no pudo procesar el turno:", error);
     sessions.delete(callSid);
-    return twiml(say("Disculpa, surgió un problema técnico. Por favor intenta de nuevo más tarde.") + "<Hangup/>");
+    return farewell("Disculpa, surgió un problema técnico. Por favor intenta de nuevo más tarde.");
   }
 }
