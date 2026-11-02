@@ -333,9 +333,12 @@ npm run test:phone:pack
 ```
 
 La prueba se niega a continuar si faltan frases, para evitar gastos
-accidentales. Verifica que el saludo, el pedido, el cambio y el total
-devuelven inmediatamente un `<Gather><Play>` y que Twilio podría
-descargar los WAV de 8 kHz por HTTP 200.
+accidentales. Inicia la sesión mediante un saludo sin síntesis facturable
+y comprueba que el pedido, el cambio y el total devuelven inmediatamente
+un `<Gather><Play>`, y que Twilio podría descargar WAV de 8 kHz por
+HTTP 200. Todas las solicitudes de prueba están autenticadas y usan un
+modo estricto de `cache-only`: si una frase no coincide, la prueba falla
+**sin llamar a OpenAI**.
 
 La solución cubre las frases exactas pregrabadas, NO cualquier pedido
 o cambio arbitrario. Si el programa recibe otras cantidades o productos,
