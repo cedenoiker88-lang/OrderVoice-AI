@@ -28,7 +28,7 @@ Obtén una **API key de OpenAI Platform** y guárdala solamente en
 ```dotenv
 OPENAI_API_KEY=TU_CLAVE_PRIVADA_DE_OPENAI
 ORDERVOICE_TTS_PROVIDER=openai
-ORDERVOICE_TTS_TIMEOUT_MS=3200
+ORDERVOICE_TTS_TIMEOUT_MS=6500
 ```
 
 No actives `ORDERVOICE_PROVIDER=openai` salvo que también quieras
@@ -120,7 +120,7 @@ de gasto del panel de OpenAI.
 
 - La voz puede mejorar claridad y nivel, pero el volumen final depende
   también del teléfono y de la red de Twilio.
-- Generar audio puede añadir latencia. Tras 3,2 s (configurable hasta 4,5 s),
+- Generar audio puede añadir latencia. Tras 6,5 s por defecto (configurable hasta 7 s),
   se usa automáticamente el `<Say>` anterior.
 - El texto hablado se envía a OpenAI cuando habilitas la voz. Usa el sistema
   solo con participantes informados y evita datos personales innecesarios.
@@ -174,3 +174,47 @@ URL privada de `trial_key` ni las URLs completas de clips.
 
 Para desactivar el modo telefónico de demostración al terminar:
 `TWILIO_TRIAL_MODE=disabled` y reiniciar Next.js.
+
+
+## Volumen constante durante toda la llamada
+
+El saludo inicial puede usar una muestra de OpenAI ya preparada, mientras que
+las respuestas siguientes generan voz en tiempo real. Si OpenAI tarda más que
+el límite configurado, el servidor vuelve a usar `<Say>` de Twilio, que puede
+sonar más bajo y diferente.
+
+La v0.6 amplía la espera de TTS a **6.500 ms**, hasta un máximo de 7.000 ms.
+También deja un margen dentro del límite de 15 s del webhook telefónico y
+registra, sin texto del pedido ni credenciales:
+
+- `[OrderVoice voz] Fuente: saludo OpenAI pregrabado` para el saludo
+- `[OrderVoice voz] OpenAI Play listo` y `durationMs` para la voz de OpenAI
+- `[OrderVoice voz] Fuente: Twilio Say` si hubo respaldo de voz
+- `[OrderVoice voz] Se activó respaldo Twilio Say` si hubo timeout o error
+
+En `.env.local`, cambia **solo** la línea que ya tengas por
+`ORDERVOICE_TTS_TIMEOUT_MS=6500`, guarda y reinicia Next.js desde
+una terminal PowerShell con:
+
+```powershell
+$env:NODE_USE_SYSTEM_CA="1"
+npm run dev
+```
+
+Primero comprueba gratis los pedidos y el audio pregrabado:
+
+```powershell
+npm run test:phone:change
+npm run test:phone:audio
+```
+
+Si ambos pasan, prueba **una sola respuesta dinámica de voz sin llamadas**
+con `npm run test:phone:voice`. Esta última sí envía **una solicitud
+facturable de voz a OpenAI**, pero no consume minutos de Twilio. Si informa
+`Twilio Say`, mira en la terminal de Next.js el motivo y la duración;
+**no aumentes el timeout por encima de 7 s**, ya que Twilio corta
+webhooks telefónicos que superan 15 s.
+
+La voz de respaldo puede seguir sonando distinta. Para conseguir uniformidad
+incluso si falla la API hay que implementar otro respaldo de audio pregrabado
+o un motor de voz local; ampliar el tiempo no es una garantía absoluta.
