@@ -6,3 +6,6 @@ out
 .env.*.local
 *.log
 .DS_Store
+
+# Vista previa de voz generada con OpenAI (solo local)
+.ordervoice-cache/
