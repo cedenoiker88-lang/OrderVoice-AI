@@ -62,7 +62,10 @@ export function advancePizzaConversation(message: string, pending: PendingPizza 
     const cancellation = /\bno (?:quiero que (?:la |lo )?|la |lo )?(?:cambies|cambiar|cambia|cambio|reemplac|sustituy)/.test(text) ||
       /\bsin cambiar\b/.test(text);
     const addition = /\b(otra|otro|agrega|agregar|anade|anadir|ademas|tambien|adicional)\b/.test(text);
-    if (correction && !cancellation && !addition) {
+    if (cancellation) {
+      return question("Entendido, no he cambiado tu pedido. ¿Deseas algo más?", null);
+    }
+    if (correction && !addition) {
       const pizzas = cart.filter((item) => item.productId !== "gaseosa");
       const flavorMatches = [...text.matchAll(/\b(peperoni|pepperoni|peperroni|hawaiana|hawaianas|margarita|margaritas)\b/g)];
       const sizeMatches = [...text.matchAll(/\b(mediana|mediano|medianas|medianos|familiar|familiares)\b/g)];
