@@ -25,7 +25,7 @@ async function main() {
     "Falta la configuración telefónica.");
   const origin = new URL(env.TWILIO_PUBLIC_BASE_URL).origin;
   const url = origin + "/api/telephony/twilio";
-  const callId = "CA" + randomBytes(16).toString("hex");
+  let callId = "CA" + randomBytes(16).toString("hex");
 
   async function request(message, greeting = false) {
     const form = new URLSearchParams({ CallSid: callId });
@@ -76,6 +76,13 @@ async function main() {
   console.log("OK: cambio a hawaiana mediana → OpenAI pregrabado, " + two + " ms.");
   const three = await request("¿Cuánto es el total?");
   console.log("OK: consulta total de $10 → OpenAI pregrabado, " + three + " ms.");
+
+  // Segundo escenario independiente: Twilio no transcribió la palabra "familiar",
+  // solo "grande". Debe resolver con la misma grabación sin llamar a Ollama.
+  callId = "CA" + randomBytes(16).toString("hex");
+  await request(null, true);
+  const alias = await request("Quiero una pizza de pepperoni grande.");
+  console.log("OK: pepperoni grande (sin familiar) → audio pregrabado, " + alias + " ms.");
   console.log("PRUEBA COMPLETADA: modo rápido, sin llamadas ni créditos OpenAI.");
 }
 main().catch(error => {
