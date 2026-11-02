@@ -62,23 +62,29 @@ function say(text: string) {
   // Voz básica del proveedor; más adelante se reemplaza por Piper local.
   return `<Say language="es-ES" voice="woman">${xml(text.slice(0, 700))}</Say>`;
 }
-async function spoken(text: string, skipTts = false): Promise<string> {
+async function spoken(text: string, skipTts = false, maxWaitMs?: number): Promise<string> {
   // Solo las pruebas autenticadas usan el encabezado de omisión de TTS.
   if (skipTts) return say(text);
   // Si OpenAI no está habilitado o supera el límite de espera, conserva <Say>
   // y permite que el cliente siga conversando sin depender de una API externa.
-  const url = cachedGreetingUrl(text) ?? await makePhoneAudioUrl(text);
+  const preRecorded = cachedGreetingUrl(text);
+  if (preRecorded) {
+    console.info("[OrderVoice voz] Fuente: saludo OpenAI pregrabado.");
+    return `<Play>${xml(preRecorded)}</Play>`;
+  }
+  const url = await makePhoneAudioUrl(text, maxWaitMs);
+  if (!url) console.info("[OrderVoice voz] Fuente: Twilio Say (respaldo de voz).");
   return url ? `<Play>${xml(url)}</Play>` : say(text);
 }
-async function listen(prompt: string, trialSecret: string | null = null, skipTts = false) {
+async function listen(prompt: string, trialSecret: string | null = null, skipTts = false, maxWaitMs?: number) {
   const base = process.env.TWILIO_PUBLIC_BASE_URL?.replace(/\/$/, "");
   const path = "/api/telephony/twilio";
   const action = base ? base + path + (trialSecret ? "?trial_key=" + encodeURIComponent(trialSecret) : "") : "";
-  const promptAudio = await spoken(prompt, skipTts);
+  const promptAudio = await spoken(prompt, skipTts, maxWaitMs);
   return twiml(`<Gather input="speech" language="es-ES" speechTimeout="auto" timeout="6" actionOnEmptyResult="true" method="POST" action="${xml(action)}">${promptAudio}</Gather>${say("No recibí respuesta. Terminamos esta llamada de prueba. Hasta luego.")}<Hangup/>`);
 }
-async function farewell(text: string, skipTts = false) {
-  return twiml((await spoken(text, skipTts)) + "<Hangup/>");
+async function farewell(text: string, skipTts = false, maxWaitMs?: number) {
+  return twiml((await spoken(text, skipTts, maxWaitMs)) + "<Hangup/>");
 }
 
 function validSignature(url: string, params: URLSearchParams, signature: string, token: string) {
@@ -146,6 +152,9 @@ async function chatWithDeadline(request: NextRequest): Promise<NextResponse> {
 }
 
 export async function POST(request: NextRequest) {
+  const requestStartedAt = Date.now();
+  // 12 s deja margen de red y Next.js dentro del límite Twilio de 15 s.
+  const remainingTtsMs = () => Math.max(0, 12_000 - (Date.now() - requestStartedAt));
   const token = process.env.TWILIO_AUTH_TOKEN;
   const publicBase = process.env.TWILIO_PUBLIC_BASE_URL?.replace(/\/$/, "");
   if (!token || !publicBase || !publicBase.startsWith("https://")) {
@@ -201,14 +210,14 @@ export async function POST(request: NextRequest) {
     session = { cart: [], pending: null, history: [], turns: 0, updatedAt: Date.now() };
     sessions.set(callSid, session);
     if (!speech) {
-      return listen(DEMO_GREETING, usingTrial ? trialSecret : null, skipTts);
+      return listen(DEMO_GREETING, usingTrial ? trialSecret : null, skipTts, remainingTtsMs());
     }
   }
   session.updatedAt = Date.now();
-  if (!speech) return listen("No te escuché bien. Por favor, repite tu pedido.", usingTrial ? trialSecret : null, skipTts);
+  if (!speech) return listen("No te escuché bien. Por favor, repite tu pedido.", usingTrial ? trialSecret : null, skipTts, remainingTtsMs());
   if (session.turns >= MAX_TURNS) {
     sessions.delete(callSid);
-    return farewell("Hemos llegado al límite de esta llamada de prueba. Gracias por comunicarte.", skipTts);
+    return farewell("Hemos llegado al límite de esta llamada de prueba. Gracias por comunicarte.", skipTts, remainingTtsMs());
   }
   session.turns += 1;
   try {
@@ -241,9 +250,9 @@ export async function POST(request: NextRequest) {
     session.history = session.history.slice(-8);
     if (data.order) {
       sessions.delete(callSid);
-      return farewell(reply, skipTts);
+      return farewell(reply, skipTts, remainingTtsMs());
     }
-    return listen(reply, usingTrial ? trialSecret : null, skipTts);
+    return listen(reply, usingTrial ? trialSecret : null, skipTts, remainingTtsMs());
   } catch (error) {
     // Mantener la sesión y el carrito. Un error temporal no debe cortar
     // la llamada ni eliminar el pedido previo. Usar <Say> sin esperar API de voz.
