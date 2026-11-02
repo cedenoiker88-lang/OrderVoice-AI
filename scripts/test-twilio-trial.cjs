@@ -39,7 +39,7 @@ async function main() {
     if (message !== null) params.set("SpeechResult", message);
     const response = await fetch(endpoint, {
       method: "POST",
-      headers: {"Content-Type":"application/x-www-form-urlencoded", ...extra},
+      headers: {"Content-Type":"application/x-www-form-urlencoded", "X-OrderVoice-Test-No-TTS":"1", ...extra},
       body: params.toString(),
       signal: AbortSignal.timeout(8000)
     });
