@@ -20,7 +20,9 @@
     "diagnose:voice": "node scripts/diagnose-openai-voice.cjs",
     "test:phone:change": "node scripts/test-phone-change.cjs",
     "test:phone:audio": "node scripts/test-phone-audio.cjs",
-    "test:phone:voice": "node scripts/test-phone-dynamic-voice.cjs"
+    "test:phone:voice": "node scripts/test-phone-dynamic-voice.cjs",
+    "prepare:phone:voice": "node scripts/prepare-phone-voice-pack.cjs",
+    "test:phone:pack": "node scripts/test-phone-voice-pack.cjs"
   },
   "dependencies": {
     "next": "^16.0.0",
