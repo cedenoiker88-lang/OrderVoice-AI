@@ -33,10 +33,13 @@ export async function makePhoneAudioUrl(text: string): Promise<string | null> {
   attemptedRequests++;
   attemptedCharacters += input.length;
 
-  // Un timeout breve evita que una llamada de prueba se corte esperando TTS.
+  // Al saludo se le da prioridad con audio pregrabado. Para respuestas
+  // dinámicas damos algo más de tiempo a OpenAI, pero dejamos margen
+  // antes del máximo de 15 s del webhook de voz de Twilio.
   const setting = Number(process.env.ORDERVOICE_TTS_TIMEOUT_MS);
   const timeout = Number.isFinite(setting) && setting >= 1000
-    ? Math.max(1000, Math.min(4500, Math.floor(setting))) : 3200;
+    ? Math.max(1000, Math.min(7000, Math.floor(setting))) : 6500;
+  const started = Date.now();
   try {
     const result = await fetch("https://api.openai.com/v1/audio/speech", {
       method: "POST",
@@ -56,16 +59,27 @@ export async function makePhoneAudioUrl(text: string): Promise<string | null> {
       cache: "no-store"
     });
     if (!result.ok) {
-      console.warn("[OrderVoice voz] API de voz no disponible (HTTP " + result.status + "); se usa voz de Twilio.");
+      console.warn("[OrderVoice voz] OpenAI no disponible, se usa Twilio Say.", {
+      httpStatus: result.status,
+      durationMs: Date.now() - started
+    });
       return null;
     }
     const pcm = Buffer.from(await result.arrayBuffer());
     const wav = telephoneWavFromPcm24(pcm);
     const id = savePhoneClip(wav);
+    console.info("[OrderVoice voz] OpenAI Play listo", {
+      durationMs: Date.now() - started,
+      format: "WAV mono 8 kHz"
+    });
     return `${base}/api/telephony/audio?id=${id}`;
   } catch (error) {
     const label = error instanceof Error ? error.name : "Error";
-    console.warn("[OrderVoice voz] Síntesis falló o excedió el tiempo (" + label + "); se usa voz de Twilio.");
+    console.warn("[OrderVoice voz] Se activó respaldo Twilio Say.", {
+      reason: label,
+      durationMs: Date.now() - started,
+      timeoutMs: timeout
+    });
     return null;
   }
 }
