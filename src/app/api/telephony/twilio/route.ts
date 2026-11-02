@@ -1,9 +1,12 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { NextRequest, NextResponse } from "next/server";
 import { POST as chatPOST } from "@/app/api/chat/route";
 import { productById, type CartItem } from "@/lib/menu";
 import type { PendingPizza } from "@/lib/pizza-dialogue";
 import { makePhoneAudioUrl } from "@/lib/phone-tts";
+import { savePhoneClip, telephoneWavFromPcm24 } from "@/lib/phone-audio";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -30,6 +33,31 @@ function twiml(body: string) {
     headers: { "Content-Type": "text/xml; charset=utf-8", "Cache-Control": "no-store" }
   });
 }
+const DEMO_GREETING = "Hola, soy OrderVoice, tu asistente virtual. ¿Qué deseas pedir hoy?";
+
+function cachedGreetingUrl(text: string): string | null {
+  if (text !== DEMO_GREETING || process.env.ORDERVOICE_TTS_PROVIDER !== "openai") return null;
+  const base = process.env.TWILIO_PUBLIC_BASE_URL?.replace(/\/$/, "");
+  if (!base?.startsWith("https://")) return null;
+  const filename = join(process.cwd(), ".ordervoice-cache", "greeting.wav");
+  if (!existsSync(filename)) return null;
+  try {
+    const wav = readFileSync(filename);
+    const isPcm24 = wav.length > 44 && wav.toString("ascii", 0, 4) === "RIFF" &&
+      wav.toString("ascii", 8, 12) === "WAVE" &&
+      wav.readUInt16LE(20) === 1 && wav.readUInt16LE(22) === 1 &&
+      wav.readUInt32LE(24) === 24_000 && wav.readUInt16LE(34) === 16 &&
+      wav.toString("ascii", 36, 40) === "data" &&
+      wav.readUInt32LE(40) === wav.length - 44;
+    if (!isPcm24) throw new Error("Formato de audio no compatible");
+    const prepared = telephoneWavFromPcm24(wav.subarray(44));
+    return `${base}/api/telephony/audio?id=${savePhoneClip(prepared)}`;
+  } catch {
+    console.warn("[OrderVoice voz] El saludo pregrabado no se pudo cargar; se usará síntesis o respaldo.");
+    return null;
+  }
+}
+
 function say(text: string) {
   // Voz básica del proveedor; más adelante se reemplaza por Piper local.
   return `<Say language="es-ES" voice="woman">${xml(text.slice(0, 700))}</Say>`;
@@ -39,7 +67,7 @@ async function spoken(text: string, skipTts = false): Promise<string> {
   if (skipTts) return say(text);
   // Si OpenAI no está habilitado o supera el límite de espera, conserva <Say>
   // y permite que el cliente siga conversando sin depender de una API externa.
-  const url = await makePhoneAudioUrl(text);
+  const url = cachedGreetingUrl(text) ?? await makePhoneAudioUrl(text);
   return url ? `<Play>${xml(url)}</Play>` : say(text);
 }
 async function listen(prompt: string, trialSecret: string | null = null, skipTts = false) {
@@ -157,7 +185,7 @@ export async function POST(request: NextRequest) {
     session = { cart: [], pending: null, history: [], turns: 0, updatedAt: Date.now() };
     sessions.set(callSid, session);
     if (!speech) {
-      return listen("Hola, soy OrderVoice, asistente virtual con voz generada por inteligencia artificial de Pizza Demo. Esta es una llamada de prueba. ¿Qué deseas ordenar?", usingTrial ? trialSecret : null, skipTts);
+      return listen(DEMO_GREETING, usingTrial ? trialSecret : null, skipTts);
     }
   }
   session.updatedAt = Date.now();
