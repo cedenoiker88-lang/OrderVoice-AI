@@ -50,7 +50,8 @@ export function advancePizzaConversation(message: string, pending: PendingPizza 
   const flavor: PizzaFlavor | undefined = /\bpep{1,2}eroni\b/.test(text) ? "pepperoni"
     : /\bhawaianas?\b/.test(text) ? "hawaiana"
     : /\bmargaritas?\b/.test(text) ? "margarita" : undefined;
-  const size: PizzaSize | undefined = /\bfamiliar(?:es)?\b/.test(text) ? "familiar"
+  // En el menú de demostración, "grande" es sinónimo de familiar.
+  const size: PizzaSize | undefined = /\b(familiar(?:es)?|grandes?)\b/.test(text) ? "familiar"
     : /\bmedian[oa]s?\b/.test(text) ? "mediana" : undefined;
 
   // Corrección explícita del pedido actual. Se procesa localmente para no
@@ -68,7 +69,7 @@ export function advancePizzaConversation(message: string, pending: PendingPizza 
     if (correction && !addition) {
       const pizzas = cart.filter((item) => item.productId !== "gaseosa");
       const flavorMatches = [...text.matchAll(/\b(peperoni|pepperoni|peperroni|hawaiana|hawaianas|margarita|margaritas)\b/g)];
-      const sizeMatches = [...text.matchAll(/\b(mediana|mediano|medianas|medianos|familiar|familiares)\b/g)];
+      const sizeMatches = [...text.matchAll(/\b(mediana|mediano|medianas|medianos|familiar|familiares|grande|grandes)\b/g)];
       if (flavorMatches.length || sizeMatches.length) {
         if (pizzas.length !== 1 || pizzas[0].quantity !== 1) {
           return question("¿Qué pizza quieres cambiar? Indica una sola pizza actual y el nuevo sabor y tamaño.", null);
