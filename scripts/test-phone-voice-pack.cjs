@@ -58,7 +58,8 @@ async function main() {
     assert.ok(!twiml.includes("<Redirect"), "No debe esperar la síntesis de OpenAI.");
     const play = twiml.match(/<Play>([^<]+)<\/Play>/)?.[1];
     assert.ok(play, "Debe incluir audio precargado (<Play>), no Twilio Say.");
-    assert.ok(twiml.includes(expected), "No se obtuvo la respuesta esperada.");
+    // TwiML lleva un enlace al archivo de audio, no el texto hablado. La
+    // coincidencia exacta queda controlada por el hash en phone-voice-pack.ts.
     const audioUrl = new URL(play.replace(/&amp;/g, "&"));
     assert.equal(audioUrl.origin, origin);
     assert.equal(audioUrl.pathname, "/api/telephony/audio");
