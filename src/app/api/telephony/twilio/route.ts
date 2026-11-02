@@ -34,21 +34,23 @@ function say(text: string) {
   // Voz básica del proveedor; más adelante se reemplaza por Piper local.
   return `<Say language="es-ES" voice="woman">${xml(text.slice(0, 700))}</Say>`;
 }
-async function spoken(text: string): Promise<string> {
+async function spoken(text: string, skipTts = false): Promise<string> {
+  // Solo las pruebas autenticadas usan el encabezado de omisión de TTS.
+  if (skipTts) return say(text);
   // Si OpenAI no está habilitado o supera el límite de espera, conserva <Say>
   // y permite que el cliente siga conversando sin depender de una API externa.
   const url = await makePhoneAudioUrl(text);
   return url ? `<Play>${xml(url)}</Play>` : say(text);
 }
-async function listen(prompt: string, trialSecret: string | null = null) {
+async function listen(prompt: string, trialSecret: string | null = null, skipTts = false) {
   const base = process.env.TWILIO_PUBLIC_BASE_URL?.replace(/\/$/, "");
   const path = "/api/telephony/twilio";
   const action = base ? base + path + (trialSecret ? "?trial_key=" + encodeURIComponent(trialSecret) : "") : "";
-  const promptAudio = await spoken(prompt);
+  const promptAudio = await spoken(prompt, skipTts);
   return twiml(`<Gather input="speech" language="es-ES" speechTimeout="auto" timeout="6" actionOnEmptyResult="true" method="POST" action="${xml(action)}">${promptAudio}</Gather>${say("No recibí respuesta. Terminamos esta llamada de prueba. Hasta luego.")}<Hangup/>`);
 }
-async function farewell(text: string) {
-  return twiml((await spoken(text)) + "<Hangup/>");
+async function farewell(text: string, skipTts = false) {
+  return twiml((await spoken(text, skipTts)) + "<Hangup/>");
 }
 
 function validSignature(url: string, params: URLSearchParams, signature: string, token: string) {
@@ -140,6 +142,9 @@ export async function POST(request: NextRequest) {
     });
     return new NextResponse("Firma Twilio inválida", { status: 403 });
   }
+  // Evita consumo de créditos cuando ejecutamos test:phone y test:trial.
+  // Se evalúa únicamente después de autenticar la petición.
+  const skipTts = request.headers.get("x-ordervoice-test-no-tts") === "1";
   const callSid = params.get("CallSid") ?? "";
   if (!/^CA[a-f0-9]{32}$/i.test(callSid)) {
     return new NextResponse("Identificador de llamada inválido", { status: 400 });
@@ -152,14 +157,14 @@ export async function POST(request: NextRequest) {
     session = { cart: [], pending: null, history: [], turns: 0, updatedAt: Date.now() };
     sessions.set(callSid, session);
     if (!speech) {
-      return listen("Hola, soy OrderVoice, asistente virtual con voz generada por inteligencia artificial de Pizza Demo. Esta es una llamada de prueba. ¿Qué deseas ordenar?", usingTrial ? trialSecret : null);
+      return listen("Hola, soy OrderVoice, asistente virtual con voz generada por inteligencia artificial de Pizza Demo. Esta es una llamada de prueba. ¿Qué deseas ordenar?", usingTrial ? trialSecret : null, skipTts);
     }
   }
   session.updatedAt = Date.now();
-  if (!speech) return listen("No te escuché bien. Por favor, repite tu pedido.", usingTrial ? trialSecret : null);
+  if (!speech) return listen("No te escuché bien. Por favor, repite tu pedido.", usingTrial ? trialSecret : null, skipTts);
   if (session.turns >= MAX_TURNS) {
     sessions.delete(callSid);
-    return farewell("Hemos llegado al límite de esta llamada de prueba. Gracias por comunicarte.");
+    return farewell("Hemos llegado al límite de esta llamada de prueba. Gracias por comunicarte.", skipTts);
   }
   session.turns += 1;
   try {
@@ -191,12 +196,12 @@ export async function POST(request: NextRequest) {
     session.history = session.history.slice(-8);
     if (data.order) {
       sessions.delete(callSid);
-      return farewell(reply);
+      return farewell(reply, skipTts);
     }
-    return listen(reply, usingTrial ? trialSecret : null);
+    return listen(reply, usingTrial ? trialSecret : null, skipTts);
   } catch (error) {
     console.error("La llamada de prueba no pudo procesar el turno:", error);
     sessions.delete(callSid);
-    return farewell("Disculpa, surgió un problema técnico. Por favor intenta de nuevo más tarde.");
+    return farewell("Disculpa, surgió un problema técnico. Por favor intenta de nuevo más tarde.", skipTts);
   }
 }
