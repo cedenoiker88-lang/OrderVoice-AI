@@ -1,6 +1,6 @@
 {
   "name": "ordervoice-ai",
-  "version": "0.2.0",
+  "version": "0.5.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -9,7 +9,13 @@
     "typecheck": "tsc --noEmit",
     "test:orders": "node scripts/test-order-engine.cjs",
     "test:ollama": "node scripts/test-ollama.cjs",
-    "test:dialogue": "node scripts/test-dialogue.cjs"
+    "test:dialogue": "node scripts/test-dialogue.cjs",
+    "test:fast": "node scripts/test-fast-intents.cjs",
+    "test:phone": "node scripts/test-twilio-webhook.cjs",
+    "diagnose:phone": "node scripts/diagnose-twilio-signature.cjs",
+    "verify:twilio": "node scripts/verify-twilio-credentials.cjs",
+    "setup:trial": "node scripts/setup-twilio-trial.cjs",
+    "test:trial": "node scripts/test-twilio-trial.cjs"
   },
   "dependencies": {
     "next": "^16.0.0",

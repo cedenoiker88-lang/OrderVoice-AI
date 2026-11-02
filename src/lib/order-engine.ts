@@ -94,6 +94,29 @@ export function demoUnderstand(message: string): Command {
   return noChange(`Tenemos ${MENU.map((item) => `${item.name} (${formatUSD(item.priceCents)})`).join(", ")}. ¿Qué deseas pedir?`, false);
 }
 
+/**
+ * Última barrera para acciones destructivas, también si el modelo o el modo
+ * demo interpretan incorrectamente una negación o una pregunta hipotética.
+ */
+export function guardDestructiveIntent(message: string, command: Command): Command {
+  if (command.action !== "confirm" && command.action !== "clear") return command;
+  const text = cleanText(message);
+  const negated = /\b(no|nunca|jamas)\b/.test(text);
+  const hypothetical = /[¿?]/.test(message) || /\b(que pasa si|cuando|como puedo|deberia)\b/.test(text);
+  if (command.action === "confirm") {
+    const explicit = /\b(confirmo|confirmar|confirmado|finalizar|hacer el pedido|realizar el pedido)\b/.test(text);
+    if (negated || hypothetical || !explicit) {
+      return noChange("No confirmé el pedido. Cuando estés listo, di: Confirmo el pedido.");
+    }
+  } else {
+    const explicit = /\b(cancelar|cancela|vaciar|vacia|borrar|borra|limpiar|limpia)\b/.test(text);
+    if (negated || hypothetical || !explicit) {
+      return noChange("No vacié el carrito. Si quieres vaciarlo, dímelo explícitamente.");
+    }
+  }
+  return command;
+}
+
 export function applyCommand(cart: CartItem[], command: Command): { cart: CartItem[]; reply: string; confirmed: boolean } {
   const unchanged = (reply: string) => ({ cart, reply, confirmed: false });
   const quantities = new Map<string, number>(cart.map((line) => [line.productId, line.quantity]));

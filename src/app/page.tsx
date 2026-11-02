@@ -9,7 +9,8 @@ type ChatResponse = {
   cart: CartItem[];
   reply: string;
   order?: ConfirmedOrder;
-  mode: "demo" | "ia" | "ollama";
+  mode: "demo" | "ia" | "ollama" | "local";
+  metrics?: { interpretMs: number; serverMs: number };
   notice?: string;
   pending?: PendingPizza | null;
   error?: string;
@@ -23,6 +24,8 @@ type SpeechLike = {
   onresult: ((event: SpeechResultEvent) => void) | null;
   onerror: ((event: { error: string }) => void) | null;
   onend: (() => void) | null;
+  onspeechstart: (() => void) | null;
+  onspeechend: (() => void) | null;
   start: () => void;
   stop: () => void;
 };
@@ -42,7 +45,11 @@ export default function Home() {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [pending, setPending] = useState<PendingPizza | null>(null);
   const [orders, setOrders] = useState<ConfirmedOrder[]>([]);
-  const [mode, setMode] = useState<"demo" | "ia" | "ollama" | "detectando">("detectando");
+  const [mode, setMode] = useState<"demo" | "ia" | "ollama" | "local" | "detectando">("detectando");
+  const [lastTiming, setLastTiming] = useState<{ requestMs: number; serverMs: number | null; interpretMs: number | null; mode: ChatResponse["mode"] } | null>(null);
+  const [lastVoiceDelayMs, setLastVoiceDelayMs] = useState<number | null>(null);
+  const [lastRecognitionMs, setLastRecognitionMs] = useState<number | null>(null);
+  const [lastSpeechToTextMs, setLastSpeechToTextMs] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [listening, setListening] = useState(false);
   const [speakReplies, setSpeakReplies] = useState(false);
@@ -59,6 +66,7 @@ export default function Home() {
   const recognitionRef = useRef<SpeechLike | null>(null);
   const generationRef = useRef(0);
   const retryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const voiceTurnStartedRef = useRef<number | null>(null);
 
   useEffect(() => {
     try {
@@ -79,6 +87,7 @@ export default function Home() {
 
   function stopVoiceSession() {
     generationRef.current += 1;
+    voiceTurnStartedRef.current = null;
     voiceRef.current = false;
     setVoiceSession(false);
     setListening(false);
@@ -100,16 +109,30 @@ export default function Home() {
     }
     try {
       let heard = false;
+      let startedSpeakingAt: number | null = null;
+      let finishedSpeakingAt: number | null = null;
       const recognition = new SpeechAPI();
       recognitionRef.current = recognition;
       recognition.lang = "es-EC";
       recognition.interimResults = false;
       recognition.continuous = false;
+      recognition.onspeechstart = () => {
+        startedSpeakingAt = performance.now();
+        finishedSpeakingAt = null;
+      };
+      recognition.onspeechend = () => {
+        finishedSpeakingAt = performance.now();
+      };
       recognition.onresult = (event) => {
         if (heard || !voiceRef.current || generation !== generationRef.current) return;
         const phrase = event.results[0]?.[0]?.transcript?.trim();
         if (!phrase) return;
         heard = true;
+        const transcriptAt = performance.now();
+        setLastRecognitionMs(startedSpeakingAt === null ? null : Math.round(transcriptAt - startedSpeakingAt));
+        setLastSpeechToTextMs(finishedSpeakingAt === null ? null : Math.round(transcriptAt - finishedSpeakingAt));
+        voiceTurnStartedRef.current = transcriptAt;
+        setLastVoiceDelayMs(null);
         setListening(false);
         recognition.stop();
         void send(phrase);
@@ -127,7 +150,7 @@ export default function Home() {
         if (recognitionRef.current === recognition) recognitionRef.current = null;
         setListening(false);
         if (!heard && voiceRef.current && generation === generationRef.current) {
-          retryRef.current = setTimeout(() => listen(generation), 500);
+          retryRef.current = setTimeout(() => listen(generation), 400);
         }
       };
       setListening(true);
@@ -159,9 +182,15 @@ export default function Home() {
     }
     utterance.rate = 1;
     if (resume) {
+      utterance.onstart = () => {
+        if (voiceRef.current && generation === generationRef.current && voiceTurnStartedRef.current !== null) {
+          setLastVoiceDelayMs(Math.round(performance.now() - voiceTurnStartedRef.current));
+          voiceTurnStartedRef.current = null;
+        }
+      };
       utterance.onend = () => {
         if (voiceRef.current && generation === generationRef.current) {
-          retryRef.current = setTimeout(() => listen(generation), 350);
+          retryRef.current = setTimeout(() => listen(generation), 250);
         }
       };
       utterance.onerror = () => {
@@ -204,10 +233,12 @@ export default function Home() {
     setBusy(true);
     setError("");
     setInput("");
+    if (!voiceRef.current) setLastVoiceDelayMs(null);
     const previousMessages = messagesRef.current;
     messagesRef.current = [...previousMessages, { role: "user", text: message }];
     setMessages(messagesRef.current);
     try {
+      const requestStartedAt = performance.now();
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -220,6 +251,12 @@ export default function Home() {
       });
       const data = (await response.json()) as ChatResponse;
       if (!response.ok) throw new Error(data.error ?? "Error al conectar con el servidor");
+      setLastTiming({
+        requestMs: Math.round(performance.now() - requestStartedAt),
+        serverMs: typeof data.metrics?.serverMs === "number" ? data.metrics.serverMs : null,
+        interpretMs: typeof data.metrics?.interpretMs === "number" ? data.metrics.interpretMs : null,
+        mode: data.mode
+      });
       setMode(data.mode);
       pendingRef.current = data.pending ?? null;
       setPending(pendingRef.current);
@@ -279,6 +316,10 @@ export default function Home() {
     setPending(null);
     setCart([]);
     setMessages([initialMessage]);
+    setLastTiming(null);
+    setLastVoiceDelayMs(null);
+    setLastRecognitionMs(null);
+    setLastSpeechToTextMs(null);
     setError("");
   }
 
@@ -286,8 +327,8 @@ export default function Home() {
   return (
     <div className="shell">
       <header className="header">
-        <div className="brand"><div className="brandmark">◉</div><div><strong>OrderVoice <span>AI</span></strong><small>Panel de pruebas · v0.4</small></div></div>
-        <div className="header-right"><span className="status-dot" /><span>Servidor de desarrollo</span><span className={`mode mode-${mode}`}>{mode === "ollama" ? "OLLAMA LOCAL" : mode === "ia" ? "IA ACTIVADA" : mode === "demo" ? "MODO DEMO" : "MODO POR DETECTAR"}</span></div>
+        <div className="brand"><div className="brandmark">◉</div><div><strong>OrderVoice <span>AI</span></strong><small>Panel de pruebas · v0.5</small></div></div>
+        <div className="header-right"><span className="status-dot" /><span>Servidor de desarrollo</span><span className={`mode mode-${mode}`}>{mode === "ollama" ? "OLLAMA LOCAL" : mode === "ia" ? "IA ACTIVADA" : mode === "local" ? "REGLAS LOCALES" : mode === "demo" ? "MODO DEMO" : "MODO POR DETECTAR"}</span></div>
       </header>
 
       <div className="intro"><div><span className="eyebrow">PRIMER PROTOTIPO</span><h1>Tu recepcionista, <em>siempre disponible.</em></h1><p>Simula pedidos de una pizzería, conversa y comprueba cómo funciona el sistema antes de añadir llamadas telefónicas.</p></div><div className="intro-chip">🍕 <strong>Pizza Demo</strong><small>Restaurante ficticio</small></div></div>
@@ -305,6 +346,15 @@ export default function Home() {
             </button>
             <span role="status">{voiceSession ? (listening ? "Escuchando al cliente…" : busy ? "Procesando el pedido…" : "OrderVoice está hablando o preparando la escucha…") : "Inicio manual de conversación"}</span>
           </div>
+          {lastTiming && <div className="performance" aria-label="Medición de velocidad de la última respuesta">
+            <span>⏱ Respuesta: <strong>{lastTiming.requestMs} ms</strong></span>
+            <span>Motor: <strong>{lastTiming.mode === "local" ? "Reglas locales" : lastTiming.mode === "ollama" ? "Ollama" : lastTiming.mode === "ia" ? "IA externa" : "Demo"}</strong></span>
+            {lastTiming.serverMs !== null && <span>Servidor: <strong>{lastTiming.serverMs} ms</strong></span>}
+            {lastTiming.interpretMs !== null && <span>Interpretación: <strong>{lastTiming.interpretMs} ms</strong></span>}
+            {lastRecognitionMs !== null && <span>Voz → texto: <strong>{lastRecognitionMs} ms</strong></span>}
+            {lastSpeechToTextMs !== null && <span>Fin del habla → texto: <strong>{lastSpeechToTextMs} ms</strong></span>}
+            {lastVoiceDelayMs !== null && <span>Texto → inicio de voz: <strong>{lastVoiceDelayMs} ms</strong></span>}
+          </div>}
           {error && <p className="error" role="alert">⚠ {error}</p>}
           <form className="composer" onSubmit={(event) => {event.preventDefault(); void send(input);}}>
             <button className={`mic ${listening ? "active" : ""}`} type="button" aria-label="Dictar pedido" title="Hablar con el micrófono" disabled={busy || voiceSession} onClick={startMicrophone}>{listening ? "◉" : "🎙"}</button>

@@ -22,7 +22,7 @@ function load(source, dependencies = {}) {
 async function run() {
   const menu = load("menu.ts");
   const engine = load("order-engine.ts", { "./menu": menu });
-  const { understandWithOllama } = load("ollama.ts", { "./menu": menu });
+  const { understandWithOllama } = load("ollama.ts", { "./menu": menu, "./order-engine": engine });
   const originalFetch = global.fetch;
   let request;
   try {
@@ -42,6 +42,8 @@ async function run() {
     assert.equal(command.items[0].quantity, 2);
     assert.equal(request.model, "llama3.2:3b");
     assert.equal(request.stream, false);
+    assert.equal(request.keep_alive, "15m");
+    assert.equal(request.options.num_ctx, 3072);
     assert.equal(engine.applyCommand([], command).cart[0].quantity, 2);
 
     // El motor nunca acepta productos que no existen aunque el modelo los devuelva.
@@ -65,6 +67,17 @@ async function run() {
     const unsafe = await understandWithOllama("¿qué tenemos en el menú?", [], []);
     assert.equal(unsafe.action, "question");
     assert.equal(unsafe.needsClarification, true);
+    // La negación no autoriza una confirmación aunque Ollama devuelva "confirm".
+    global.fetch = async () => ({
+      ok: true,
+      json: async () => ({ message: { content: JSON.stringify({
+        action: "confirm", items: [], replacements: [], answer: "", needsClarification: false
+      }) } })
+    });
+    const negated = await understandWithOllama("No confirmo el pedido", [{ productId: "pepperoni-mediana", quantity: 1 }], []);
+    assert.equal(negated.action, "question");
+    assert.equal(negated.needsClarification, true);
+
 
     console.log("OK: contrato Ollama, validación de menú y protección del carrito");
   } finally {
