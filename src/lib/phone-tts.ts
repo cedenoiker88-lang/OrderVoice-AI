@@ -67,9 +67,9 @@ export async function makePhoneAudioUrl(text: string, maxWaitMs?: number): Promi
     });
     if (!result.ok) {
       console.warn("[OrderVoice voz] OpenAI no disponible, se usa Twilio Say.", {
-      httpStatus: result.status,
-      durationMs: Date.now() - started
-    });
+        httpStatus: result.status,
+        durationMs: Date.now() - started
+      });
       return null;
     }
     const pcm = Buffer.from(await result.arrayBuffer());
