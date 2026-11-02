@@ -89,7 +89,7 @@ async function farewell(text: string, skipTts = false, maxWaitMs?: number) {
   return twiml((await spoken(text, skipTts, maxWaitMs)) + "<Hangup/>");
 }
 
-function queueSpeech(text: string, trialSecret: string | null, farewellTurn: boolean): NextResponse | null {
+function queueSpeech(text: string, trialSecret: string | null, farewellTurn: boolean, cachedOnly = false): NextResponse | null {
   const base = process.env.TWILIO_PUBLIC_BASE_URL?.replace(/\/$/, "");
   if (!base?.startsWith("https://")) return null;
   const action = base + "/api/telephony/twilio" +
@@ -103,6 +103,9 @@ function queueSpeech(text: string, trialSecret: string | null, farewellTurn: boo
     if (farewellTurn) return twiml(play + "<Hangup/>");
     return twiml(`<Gather input="speech" language="es-ES" speechTimeout="auto" timeout="6" actionOnEmptyResult="true" method="POST" action="${xml(action)}">${play}</Gather>${say("No recibí respuesta. Terminamos esta llamada de prueba. Hasta luego.")}<Hangup/>`);
   }
+  // Las pruebas firmadas pueden exigir solo los audios previamente preparados;
+  // si falta uno, no realizan por accidente una solicitud facturable a OpenAI.
+  if (cachedOnly) return null;
   const jobId = beginPhoneVoiceJob(text, action, farewellTurn);
   if (!jobId) return null;
   // Twilio recibe una respuesta TwiML inmediata, mientras la API crea
@@ -111,14 +114,14 @@ function queueSpeech(text: string, trialSecret: string | null, farewellTurn: boo
   return twiml(`<Pause length="1"/><Redirect method="GET">${xml(statusUrl)}</Redirect>`);
 }
 
-async function respondInConversation(text: string, trialSecret: string | null, skipTts: boolean, maxWaitMs: number) {
-  const queued = !skipTts ? queueSpeech(text, trialSecret, false) : null;
-  return queued ?? listen(text, trialSecret, skipTts, maxWaitMs);
+async function respondInConversation(text: string, trialSecret: string | null, skipTts: boolean, maxWaitMs: number, cachedOnly = false) {
+  const queued = !skipTts ? queueSpeech(text, trialSecret, false, cachedOnly) : null;
+  return queued ?? listen(text, trialSecret, skipTts || cachedOnly, maxWaitMs);
 }
 
-async function respondAndFinish(text: string, trialSecret: string | null, skipTts: boolean, maxWaitMs: number) {
-  const queued = !skipTts ? queueSpeech(text, trialSecret, true) : null;
-  return queued ?? farewell(text, skipTts, maxWaitMs);
+async function respondAndFinish(text: string, trialSecret: string | null, skipTts: boolean, maxWaitMs: number, cachedOnly = false) {
+  const queued = !skipTts ? queueSpeech(text, trialSecret, true, cachedOnly) : null;
+  return queued ?? farewell(text, skipTts || cachedOnly, maxWaitMs);
 }
 
 function validSignature(url: string, params: URLSearchParams, signature: string, token: string) {
@@ -232,6 +235,8 @@ export async function POST(request: NextRequest) {
   // Evita consumo de créditos cuando ejecutamos test:phone y test:trial.
   // Se evalúa únicamente después de autenticar la petición.
   const skipTts = request.headers.get("x-ordervoice-test-no-tts") === "1";
+  // Diagnóstico autenticado: jamás llamar a la API si el sonido precargado falta.
+  const cachedOnly = request.headers.get("x-ordervoice-test-cached-only") === "1";
   const callSid = params.get("CallSid") ?? "";
   if (!/^CA[a-f0-9]{32}$/i.test(callSid)) {
     return new NextResponse("Identificador de llamada inválido", { status: 400 });
@@ -248,10 +253,10 @@ export async function POST(request: NextRequest) {
     }
   }
   session.updatedAt = Date.now();
-  if (!speech) return respondInConversation("No te escuché bien. Por favor, repite tu pedido.", usingTrial ? trialSecret : null, skipTts, remainingTtsMs());
+  if (!speech) return respondInConversation("No te escuché bien. Por favor, repite tu pedido.", usingTrial ? trialSecret : null, skipTts, remainingTtsMs(), cachedOnly);
   if (session.turns >= MAX_TURNS) {
     sessions.delete(callSid);
-    return respondAndFinish("Hemos llegado al límite de esta llamada de prueba. Gracias por comunicarte.", usingTrial ? trialSecret : null, skipTts, remainingTtsMs());
+    return respondAndFinish("Hemos llegado al límite de esta llamada de prueba. Gracias por comunicarte.", usingTrial ? trialSecret : null, skipTts, remainingTtsMs(), cachedOnly);
   }
   session.turns += 1;
   try {
@@ -284,9 +289,9 @@ export async function POST(request: NextRequest) {
     session.history = session.history.slice(-8);
     if (data.order) {
       sessions.delete(callSid);
-      return respondAndFinish(reply, usingTrial ? trialSecret : null, skipTts, remainingTtsMs());
+      return respondAndFinish(reply, usingTrial ? trialSecret : null, skipTts, remainingTtsMs(), cachedOnly);
     }
-    return respondInConversation(reply, usingTrial ? trialSecret : null, skipTts, remainingTtsMs());
+    return respondInConversation(reply, usingTrial ? trialSecret : null, skipTts, remainingTtsMs(), cachedOnly);
   } catch (error) {
     // Mantener la sesión y el carrito. Un error temporal no debe cortar
     // la llamada ni eliminar el pedido previo. Usar <Say> sin esperar API de voz.
