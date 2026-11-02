@@ -88,4 +88,20 @@ assert.equal(pending, null);
 assert.deepEqual(cart, [{ productId: "pepperoni-familiar", quantity: 1 }]);
 assert.equal(menu.calculateTotal(cart), 1400);
 
+// Regresión reportada desde teléfono: cambio de pizza una vez que ya hay carrito.
+pending = null; cart = [];
+say("Quiero una pizza de pepperoni familiar");
+assert.deepEqual(cart, [{ productId: "pepperoni-familiar", quantity: 1 }]);
+r = say("Mejor cámbiala por una pizza hawaiana mediana");
+assert.deepEqual(cart, [{ productId: "hawaiana-mediana", quantity: 1 }]);
+assert.equal(menu.calculateTotal(cart), 1000);
+r = say("No, mejor cámbiala por una margarita familiar");
+assert.deepEqual(cart, [{ productId: "margarita-familiar", quantity: 1 }]);
+assert.equal(menu.calculateTotal(cart), 1350);
+r = say("Cambia la margarita familiar por una pepperoni mediana");
+assert.deepEqual(cart, [{ productId: "pepperoni-mediana", quantity: 1 }]);
+assert.equal(menu.calculateTotal(cart), 900);
+r = say("No quiero que cambies mi pizza por una hawaiana familiar");
+assert.deepEqual(cart, [{ productId: "pepperoni-mediana", quantity: 1 }], "Negación no debe modificar el carrito");
+
 console.log("OK: aclaraciones con memoria, transcripciones de voz y carrito sin duplicados");
