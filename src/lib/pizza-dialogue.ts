@@ -114,8 +114,15 @@ export function advancePizzaConversation(message: string, pending: PendingPizza 
   } else {
     // Solo iniciar una aclaración para una pizza solicitada; no interceptar consultas,
     // reemplazos, ni pedidos compuestos que el motor ya maneja.
+    // Las transcripciones reales suelen insertar comas en un solo pedido:
+    // "una pizza pepperoni grande, familiar". No tratar esa coma como
+    // dos productos salvo que haya evidencia de una lista.
+    const flavorCount = [...text.matchAll(/\b(pep{1,2}eroni|hawaianas?|margaritas?)\b/g)].length;
+    const pizzaCount = [...text.matchAll(/\bpizzas?\b/g)].length;
+    const hasSecondProduct = /\b(gaseosa|gaseosas|cola|refresco|bebida|bebidas)\b/.test(text) ||
+      (flavorCount > 1 || pizzaCount > 1);
     if (!pizzaWord || /\b(cambia|reemplaza|sustituye|quita|elimina|cuanto|total|precio|menu|tienen)\b/.test(text) ||
-        /\s+y\s+|,|;/.test(text)) return null;
+        /\s+y\s+|;/.test(text) || (text.includes(",") && hasSecondProduct)) return null;
   }
 
   if (!pending && !pizzaWord) return null;
