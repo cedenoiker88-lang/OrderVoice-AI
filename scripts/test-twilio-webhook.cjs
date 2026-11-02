@@ -54,7 +54,8 @@ async function main() {
         method: "POST",
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
-          "X-Twilio-Signature": signature
+          "X-Twilio-Signature": signature,
+          "X-OrderVoice-Test-No-TTS": "1"
         },
         body: form.toString(),
         signal: AbortSignal.timeout(8000)
