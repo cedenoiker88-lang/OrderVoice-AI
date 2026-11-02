@@ -1,4 +1,6 @@
 import { randomBytes } from "node:crypto";
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 
 type Clip = { wav: Buffer; expiresAt: number };
 // Next.js puede compilar cada ruta por separado. Compartimos la caché temporal
@@ -11,6 +13,32 @@ const clips = appGlobal.__ordervoicePhoneClips ??
 const TTL_MS = 5 * 60_000;
 const MAX_CLIPS = 32;
 const SAMPLE_RATE = 8_000;
+const CLIP_PATTERN = /^[a-f0-9]{48}\.wav$/;
+function clipDir() { return join(process.cwd(), ".ordervoice-cache", "clips"); }
+function clipPath(id: string) { return join(clipDir(), id + ".wav"); }
+function safeRemove(filename: string) {
+  try { unlinkSync(filename); } catch { /* puede haber sido eliminado antes */ }
+}
+function persistClip(id: string, wav: Buffer, now: number) {
+  try {
+    const dir = clipDir();
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
+    // Los archivos se conservan localmente como máximo 5 min.
+    for (const name of readdirSync(dir)) {
+      if (!CLIP_PATTERN.test(name)) continue;
+      const filename = join(dir, name);
+      try {
+        if (statSync(filename).mtimeMs + TTL_MS < now) safeRemove(filename);
+      } catch { /* archivo retirado durante la limpieza */ }
+    }
+    writeFileSync(clipPath(id), wav, { mode: 0o600, flag: "wx" });
+  } catch {
+    // El audio sigue disponible en memoria, pero ngrok podría servirse
+    // desde otro módulo de Next.js. No registrar el contenido ni el id.
+    console.warn("[OrderVoice audio] No se pudo persistir temporalmente el audio.");
+  }
+}
+
 
 /** Convierte PCM16 mono a 24 kHz en WAV PCM16 mono a 8 kHz.
  * Filtra frecuencias altas antes de reducir la frecuencia de muestreo,
@@ -93,16 +121,27 @@ export function savePhoneClip(wav: Buffer): string {
   while (clips.size >= MAX_CLIPS) clips.delete(clips.keys().next().value!);
   const id = randomBytes(24).toString("hex");
   clips.set(id, { wav, expiresAt: now + TTL_MS });
+  persistClip(id, wav, now);
   return id;
 }
 
 export function readPhoneClip(id: string): Buffer | null {
   if (!/^[0-9a-f]{48}$/.test(id)) return null;
   const entry = clips.get(id);
-  if (!entry) return null;
-  if (Date.now() > entry.expiresAt) {
-    clips.delete(id);
+  const now = Date.now();
+  if (entry && now <= entry.expiresAt) return entry.wav;
+  if (entry) clips.delete(id);
+  const filename = clipPath(id);
+  if (!existsSync(filename)) return null;
+  try {
+    const stat = statSync(filename);
+    if (stat.mtimeMs + TTL_MS < now || stat.size > 4_000_000) {
+      safeRemove(filename);
+      return null;
+    }
+    // Sobrevive a una recompilación o reinicio breve de Next.js.
+    return readFileSync(filename);
+  } catch {
     return null;
   }
-  return entry.wav;
 }
