@@ -17,7 +17,8 @@
     "setup:trial": "node scripts/setup-twilio-trial.cjs",
     "test:trial": "node scripts/test-twilio-trial.cjs",
     "test:voice": "node scripts/test-openai-voice.cjs",
-    "diagnose:voice": "node scripts/diagnose-openai-voice.cjs"
+    "diagnose:voice": "node scripts/diagnose-openai-voice.cjs",
+    "test:phone:change": "node scripts/test-phone-change.cjs"
   },
   "dependencies": {
     "next": "^16.0.0",
