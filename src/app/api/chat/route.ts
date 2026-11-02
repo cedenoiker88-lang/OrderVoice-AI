@@ -46,6 +46,8 @@ export async function POST(request: NextRequest) {
     const message = typeof raw.message === "string" ? raw.message.trim() : "";
     if (!message || message.length > 500) return NextResponse.json({ error: "El mensaje debe tener entre 1 y 500 caracteres" }, { status: 400 });
     const cart = sanitizeCart(raw.cart);
+    // Evita que el modelo local agote los 15 s permitidos a una llamada por Twilio.
+    const telephoneMode = raw.telephoneMode === true;
     // Un pedido incompleto mantiene sus campos pendientes entre mensajes.
     // El motor determinista resuelve aclaraciones antes de consultar al modelo.
     const incomingPending = sanitizePending(raw.pending);
@@ -74,7 +76,7 @@ export async function POST(request: NextRequest) {
         .filter((entry) => (entry.role === "user" || entry.role === "assistant") && typeof entry.text === "string")
         .map((entry) => ({ role: entry.role as "user" | "assistant", text: String(entry.text).slice(0, 250) })) : [];
       try {
-        command = await understandWithOllama(message, cart, history);
+        command = await understandWithOllama(message, cart, history, telephoneMode ? 4_500 : 90_000);
         mode = "ollama";
       } catch (error) {
         console.warn("Ollama local no disponible; modo demo:", error);
