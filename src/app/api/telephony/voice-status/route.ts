@@ -22,8 +22,8 @@ export async function GET(request: NextRequest) {
   const job = findPhoneVoiceJob(id);
   if (!job) {
     // No se pudo recuperar el turno: evitar cerrar la llamada por un 404.
-    return twiml(say("Disculpa, la respuesta se demoró. Por favor, repite tu pedido.") +
-      '<Gather input="speech" language="es-ES" timeout="6" speechTimeout="auto"></Gather>');
+    return twiml(say("Disculpa, esta respuesta ya no está disponible. Por favor, vuelve a llamar.") +
+      "<Hangup/>");
   }
   if (job.state === "pending") {
     const base = process.env.TWILIO_PUBLIC_BASE_URL?.replace(/\/$/, "");
