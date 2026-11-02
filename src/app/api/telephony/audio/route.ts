@@ -11,6 +11,8 @@ export async function GET(request: NextRequest) {
   const id = request.nextUrl.searchParams.get("id") ?? "";
   const wav = readPhoneClip(id);
   if (!wav) {
+    // Sin imprimir el identificador aleatorio ni contenido.
+    console.warn("[OrderVoice audio] Twilio solicitó un clip inexistente o expirado (HTTP 404).");
     return new NextResponse("Audio expirado o inexistente", {
       status: 404,
       headers: { "Cache-Control": "no-store" }
