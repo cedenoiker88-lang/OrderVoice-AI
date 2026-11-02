@@ -53,30 +53,51 @@ export function advancePizzaConversation(message: string, pending: PendingPizza 
   const size: PizzaSize | undefined = /\bfamiliar(?:es)?\b/.test(text) ? "familiar"
     : /\bmedian[oa]s?\b/.test(text) ? "mediana" : undefined;
 
-  // Correcciones como "mejor que sea de pepperoni" después de añadir una pizza.
-  // Solo se sustituyen automáticamente cuando hay una única pizza de cantidad 1.
-  if (!pending && /\b(mejor|que sea|quiero que sea|prefiero)\b/.test(text) && (flavor || size) && !pizzaWord) {
-    const pizzas = cart.filter((item) => item.productId !== "gaseosa");
-    if (pizzas.length !== 1 || pizzas[0].quantity !== 1) {
-      return question("¿Qué pizza quieres modificar? Indica la pizza actual y el nuevo sabor o tamaño.", null);
-    }
-    const original = pizzas[0];
-    const [oldFlavor, oldSize] = original.productId.split("-") as [PizzaFlavor, PizzaSize];
-    const targetFlavor = flavor ?? oldFlavor;
-    const targetSize = size ?? oldSize;
-    const targetId = targetFlavor + "-" + targetSize;
-    if (targetId === original.productId) {
-      return question("Esa pizza ya tiene ese sabor y tamaño. ¿Deseas agregar algo más?", null);
-    }
-    return {
-      pending: null,
-      command: {
-        action: "replace", items: [],
-        replacements: [{ fromProductId: original.productId, toProductId: targetId, quantity: 1 }],
-        answer: "", needsClarification: false
+  // Corrección explícita del pedido actual. Se procesa localmente para no
+  // depender de Ollama durante una llamada (Twilio limita la espera a 15 s).
+  // La selección del ÚLTIMO sabor/tamaño permite interpretar frases como
+  // "cambia la pepperoni familiar por una hawaiana mediana".
+  if (!pending) {
+    const correction = /\b(cambia|cambiar|cambio|cambie|cambiame|cambiala|cambialo|reemplaza|reemplazar|sustituye|sustituir|mejor|prefiero)\b|\ben (?:vez|lugar) de\b|\bque sea\b|\bquiero que sea\b/.test(text);
+    const cancellation = /\bno (?:quiero que (?:la |lo )?|la |lo )?(?:cambies|cambiar|cambia|cambio|reemplac|sustituy)/.test(text) ||
+      /\bsin cambiar\b/.test(text);
+    const addition = /\b(otra|otro|agrega|agregar|anade|anadir|ademas|tambien|adicional)\b/.test(text);
+    if (correction && !cancellation && !addition) {
+      const pizzas = cart.filter((item) => item.productId !== "gaseosa");
+      const flavorMatches = [...text.matchAll(/\b(peperoni|pepperoni|peperroni|hawaiana|hawaianas|margarita|margaritas)\b/g)];
+      const sizeMatches = [...text.matchAll(/\b(mediana|mediano|medianas|medianos|familiar|familiares)\b/g)];
+      if (flavorMatches.length || sizeMatches.length) {
+        if (pizzas.length !== 1 || pizzas[0].quantity !== 1) {
+          return question("¿Qué pizza quieres cambiar? Indica una sola pizza actual y el nuevo sabor y tamaño.", null);
+        }
+        const original = pizzas[0];
+        const [oldFlavor, oldSize] = original.productId.split("-") as [PizzaFlavor, PizzaSize];
+        const lastFlavor = flavorMatches.at(-1)?.[1];
+        const lastSize = sizeMatches.at(-1)?.[1];
+        const targetFlavor: PizzaFlavor = lastFlavor
+          ? /^pep/.test(lastFlavor) ? "pepperoni"
+            : /^haw/.test(lastFlavor) ? "hawaiana" : "margarita"
+          : oldFlavor;
+        const targetSize: PizzaSize = lastSize
+          ? /^med/.test(lastSize) ? "mediana" : "familiar" : oldSize;
+        const targetId = targetFlavor + "-" + targetSize;
+        if (targetId === original.productId) {
+          return question("Esa pizza ya tiene ese sabor y tamaño. ¿Deseas agregar algo más?", null);
+        }
+        return {
+          pending: null,
+          command: {
+            action: "replace", items: [],
+            replacements: [{ fromProductId: original.productId, toProductId: targetId, quantity: 1 }],
+            answer: "", needsClarification: false
+          }
+        };
       }
-    };
+      // No inferir una sustitución sin un nuevo sabor o tamaño.
+      return question("¿Por cuál sabor y tamaño deseas cambiar tu pizza?", null);
+    }
   }
+
 
   if (pending) {
     if (/\b(olvida|descarta)\b.*\b(pizza|pedido)|\bno quiero esa pizza\b/.test(text)) {
