@@ -273,3 +273,76 @@ Si pasa, haz **una sola** llamada real. En ngrok verás las rutas:
 Para producción habrá que utilizar streaming telefónico de audio y una
 cola/servicio de trabajos compartido. No difundas los tokens de prueba o
 IDs completos de clips al enviar capturas.
+
+
+## Solución para voz muy baja después del saludo: paquete pregrabado
+
+Si el registro del servidor muestra `TimeoutError`, `durationMs: 25000`
+y después `source: Twilio Say`, significa que OpenAI no preparó el sonido
+a tiempo (aunque el pedido sí se procesó). Aumentar el timeout no resuelve
+la latencia en la conversación.
+
+Ahora OrderVoice AI puede reproducir inmediatamente un paquete de frases
+con la misma voz **Coral** de OpenAI. Cada frase se selecciona **solo si el
+texto completo coincide** con la respuesta real del carrito, incluidos los
+precios. Para solicitudes no incluidas se conserva la generación dinámica.
+
+Por defecto se preparan estas CUATRO frases de la demostración:
+1. Se añadió una pizza pepperoni familiar ($14).
+2. Se sustituyó por hawaiana mediana ($10).
+3. Total de la pizza pepperoni familiar ($14).
+4. Total de la pizza hawaiana mediana ($10).
+
+### 1. Inspeccionar sin consumir créditos
+
+```powershell
+git pull origin dev/v0.6
+npm run typecheck
+npm run prepare:phone:voice -- --list
+```
+
+### 2. Preparar los sonidos fuera de la llamada (USA CRÉDITOS API)
+
+En la terminal de PowerShell de la carpeta `ordervoice-ai-starter`:
+
+```powershell
+$env:NODE_USE_SYSTEM_CA="1"
+npm run prepare:phone:voice
+```
+
+**Atención**: cada frase que esté pendiente genera UNA petición
+facturable a OpenAI. Inicialmente pueden ser cuatro. El programa no
+hace llamadas a Twilio, no reintenta automáticamente y conserva los
+archivos completados si una petición falla. Se permite hasta 90 segundos
+por petición, porque se genera antes de llamar. No lo ejecutes
+simultáneamente en varias terminales.
+
+Los archivos se guardan localmente en
+`.ordervoice-cache/voice-pack/` y **no se suben a GitHub**. Si aparece
+`TimeoutError`, revisa `NODE_USE_SYSTEM_CA`, la red y el servicio
+antes de repetir la preparación; no hay garantía de que una petición
+abortada no haya consumido créditos.
+
+### 3. Verificar sin hacer llamadas ni generar TTS nuevo
+
+Con Next.js y ngrok activos y `.env.local` con
+`ORDERVOICE_TTS_PROVIDER=openai`:
+
+```powershell
+npm run test:phone:pack
+```
+
+La prueba se niega a continuar si faltan frases, para evitar gastos
+accidentales. Verifica que el saludo, el pedido, el cambio y el total
+devuelven inmediatamente un `<Gather><Play>` y que Twilio podría
+descargar los WAV de 8 kHz por HTTP 200.
+
+La solución cubre las frases exactas pregrabadas, NO cualquier pedido
+o cambio arbitrario. Si el programa recibe otras cantidades o productos,
+aún puede solicitar OpenAI de forma dinámica y, si OpenAI vuelve a tardar
+más de 25 segundos, usar la voz de Twilio. Para una experiencia de voz
+en tiempo real consistente con cualquier texto se requiere una solución
+de streaming y una conexión de red estable.
+
+Mantén `TWILIO_TRIAL_MODE` reservado a las pruebas locales; al terminar
+usa `TWILIO_TRIAL_MODE=disabled` y reinicia Next.js.
