@@ -155,11 +155,14 @@ Con Next.js y ngrok conectados:
 
 ```powershell
 npm run test:phone:change
+npm run test:phone:audio
 ```
 
-La segunda prueba reproduce estos turnos: pepperoni familiar, cambiar a
+La prueba de cambios reproduce estos turnos: pepperoni familiar, cambiar a
 hawaiana mediana, consultar total, cambiar a margarita familiar y después a
-pepperoni mediana. Solo deben verse respuestas **HTTP 200**, sin llamadas
+pepperoni mediana. La prueba de audio verifica además que Twilio pueda recuperar el WAV del saludo
+con HTTP 200, incluso después de cambios del servidor. En ambos casos solo
+deben verse respuestas **HTTP 200**, sin llamadas
 ni cobros telefónicos.
 
 Además, los clips se guardan durante unos 5 minutos en archivos locales
