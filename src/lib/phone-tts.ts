@@ -14,7 +14,7 @@ const MAX_CHARACTERS_PER_LINE = 480;
  * NOTA: gpt-4o-mini-tts está deprecado y dejará de estar disponible
  * el 6 de enero de 2027. El siguiente paso será Realtime 2.1 mini.
  */
-export async function makePhoneAudioUrl(text: string, maxWaitMs?: number): Promise<string | null> {
+export async function makePhoneAudioUrl(text: string, maxWaitMs?: number, asyncJob = false): Promise<string | null> {
   if (process.env.ORDERVOICE_TTS_PROVIDER !== "openai") return null;
   const apiKey = process.env.OPENAI_API_KEY?.trim();
   const base = process.env.TWILIO_PUBLIC_BASE_URL?.replace(/\/$/, "");
@@ -37,8 +37,9 @@ export async function makePhoneAudioUrl(text: string, maxWaitMs?: number): Promi
   // dinámicas damos algo más de tiempo a OpenAI, pero dejamos margen
   // antes del máximo de 15 s del webhook de voz de Twilio.
   const setting = Number(process.env.ORDERVOICE_TTS_TIMEOUT_MS);
-  const configuredTimeout = Number.isFinite(setting) && setting >= 1000
-    ? Math.max(1000, Math.min(7000, Math.floor(setting))) : 6500;
+  const configuredTimeout = asyncJob ? 25_000 :
+    Number.isFinite(setting) && setting >= 1000
+      ? Math.max(1000, Math.min(7000, Math.floor(setting))) : 6500;
   // Evita pedir síntesis si el tiempo restante de Twilio no es suficiente.
   const timeout = maxWaitMs === undefined ? configuredTimeout
     : Math.min(configuredTimeout, Math.floor(maxWaitMs));
