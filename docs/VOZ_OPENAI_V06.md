@@ -56,7 +56,22 @@ Invoke-Item .next\ordervoice-voz-openai-v06.wav
 pero **no realiza llamadas ni consume minutos de Twilio**. Si se agota el saldo,
 revisa la respuesta HTTP y las credenciales; no compartas tu clave.
 
-## 3. Comprobar las llamadas sin generar audio facturable
+## 3. Preparar el saludo ya generado (recomendado)
+
+Si la muestra local de `npm run test:voice` te gustó, reutilízala
+para que la **primera frase de la llamada no dependa de esperar la API**:
+
+```powershell
+New-Item -ItemType Directory -Force .ordervoice-cache
+Copy-Item .next\ordervoice-voz-openai-v06.wav .ordervoice-cache\greeting.wav
+```
+
+El archivo es local y la carpeta está excluida de GitHub.
+Se carga en la llamada como WAV 8 kHz normalizado. Si el archivo no existe
+o es incompatible, se intenta OpenAI y después la voz de respaldo.
+No borres `.ordervoice-cache` entre llamadas de prueba.
+
+## 4. Comprobar las llamadas sin generar audio facturable
 
 Con Next.js y ngrok activos, usa:
 
@@ -68,14 +83,22 @@ npm run test:trial
 Estas pruebas usan un encabezado de diagnóstico después de validar la autenticación
 y omiten la generación de OpenAI, por lo que no consumen créditos de voz.
 
-## 4. Probar una llamada real
+## 5. Probar una llamada real
 
-1. Mantén ngrok y Next.js funcionando.
+1. En la terminal **que ejecuta Next.js**, activa primero los certificados
+   de Windows y reinicia el servidor:
+
+   ```powershell
+   $env:NODE_USE_SYSTEM_CA="1"
+   npm run dev
+   ```
+
+   Mantén ngrok conectado al puerto 3000.
 2. En **Twilio → Try out Voice → Start a call → Custom**, conserva la URL
    privada que ya funcionaba en la versión v0.5 (contiene `trial_key=`).
 3. Pulsa **Start call** solo una vez.
 4. Después del mensaje Trial en inglés deberías oír el saludo en español.
-5. En el panel de ngrok, al reproducir OpenAI debería aparecer un
+5. En el panel de ngrok, al reproducir el archivo preparado o la voz de OpenAI debería aparecer un
    `GET /api/telephony/audio?id=...` con HTTP 200, además del POST telefónico.
 6. Si no aparece ningún GET de audio, revisa la terminal de Next.js:
    un aviso de fallback significa que la API falló, alcanzó su límite de
@@ -93,7 +116,7 @@ como medida auxiliar de consumo. **No es un tope económico garantizado**:
 reiniciar el servidor restablece estos límites. Utiliza también los límites
 de gasto del panel de OpenAI.
 
-## 5. Limitaciones y próximos pasos
+## 6. Limitaciones y próximos pasos
 
 - La voz puede mejorar claridad y nivel, pero el volumen final depende
   también del teléfono y de la red de Twilio.
