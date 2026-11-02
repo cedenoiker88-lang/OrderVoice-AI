@@ -131,3 +131,43 @@ de gasto del panel de OpenAI.
 - El modo trial con `trial_key` sirve exclusivamente para una demostración
   privada. Al terminar las pruebas, cambia
   `TWILIO_TRIAL_MODE=disabled` y reinicia Next.js.
+
+
+## Corrección de cortes al cambiar una pizza (v0.6)
+
+Si el primer pedido funciona pero una sustitución provoca un mensaje de error
+en inglés, no significa necesariamente que falle la voz de OpenAI.
+Twilio solo espera hasta 15 segundos por una respuesta de webhook.
+
+El controlador ahora interpreta cambios sencillos de una sola pizza en el
+carrito **sin consultar a Ollama**, y limita las interpretaciones telefónicas
+a un tiempo breve. En caso de error, conserva el carrito y pide repetir
+el cambio en español, en vez de colgar de inmediato.
+
+**Para comprobarlo sin llamada ni consumo de OpenAI:**
+
+```powershell
+git pull origin dev/v0.6
+npm run test:dialogue
+```
+
+Con Next.js y ngrok conectados:
+
+```powershell
+npm run test:phone:change
+```
+
+La segunda prueba reproduce estos turnos: pepperoni familiar, cambiar a
+hawaiana mediana, consultar total, cambiar a margarita familiar y después a
+pepperoni mediana. Solo deben verse respuestas **HTTP 200**, sin llamadas
+ni cobros telefónicos.
+
+Además, los clips se guardan durante unos 5 minutos en archivos locales
+`.ordervoice-cache/clips` (carpeta ignorada por GitHub) para resistir
+recargas de Next.js. Si ngrok muestra un
+`GET /api/telephony/audio?id=...` con **404**, el problema está en la
+reproducción y hay que revisar los registros de Next.js. No compartas la
+URL privada de `trial_key` ni las URLs completas de clips.
+
+Para desactivar el modo telefónico de demostración al terminar:
+`TWILIO_TRIAL_MODE=disabled` y reiniciar Next.js.
