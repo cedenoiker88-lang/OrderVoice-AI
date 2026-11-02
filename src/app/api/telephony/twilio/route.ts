@@ -8,6 +8,7 @@ import type { PendingPizza } from "@/lib/pizza-dialogue";
 import { makePhoneAudioUrl } from "@/lib/phone-tts";
 import { beginPhoneVoiceJob } from "@/lib/phone-voice-jobs";
 import { preparedVoiceUrl } from "@/lib/phone-voice-pack";
+import { phoneDemoReply } from "@/lib/phone-fast-replies";
 import { savePhoneClip, telephoneWavFromPcm24 } from "@/lib/phone-audio";
 
 export const runtime = "nodejs";
@@ -105,7 +106,10 @@ function queueSpeech(text: string, trialSecret: string | null, farewellTurn: boo
   }
   // Las pruebas firmadas pueden exigir solo los audios previamente preparados;
   // si falta uno, no realizan por accidente una solicitud facturable a OpenAI.
-  if (cachedOnly) return null;
+  if (cachedOnly) {
+    console.info("[OrderVoice voz] Sin grabación exacta; modo rápido: respuesta inmediata con respaldo.", { characters: text.length });
+    return null;
+  }
   const jobId = beginPhoneVoiceJob(text, action, farewellTurn);
   if (!jobId) return null;
   // Twilio recibe una respuesta TwiML inmediata, mientras la API crea
@@ -115,13 +119,15 @@ function queueSpeech(text: string, trialSecret: string | null, farewellTurn: boo
 }
 
 async function respondInConversation(text: string, trialSecret: string | null, skipTts: boolean, maxWaitMs: number, cachedOnly = false) {
-  const queued = !skipTts ? queueSpeech(text, trialSecret, false, cachedOnly) : null;
-  return queued ?? listen(text, trialSecret, skipTts || cachedOnly, maxWaitMs);
+  const fastMode = process.env.ORDERVOICE_PHONE_FAST_MODE === "enabled";
+  const queued = !skipTts ? queueSpeech(text, trialSecret, false, cachedOnly || fastMode) : null;
+  return queued ?? listen(text, trialSecret, skipTts || cachedOnly || fastMode, maxWaitMs);
 }
 
 async function respondAndFinish(text: string, trialSecret: string | null, skipTts: boolean, maxWaitMs: number, cachedOnly = false) {
-  const queued = !skipTts ? queueSpeech(text, trialSecret, true, cachedOnly) : null;
-  return queued ?? farewell(text, skipTts || cachedOnly, maxWaitMs);
+  const fastMode = process.env.ORDERVOICE_PHONE_FAST_MODE === "enabled";
+  const queued = !skipTts ? queueSpeech(text, trialSecret, true, cachedOnly || fastMode) : null;
+  return queued ?? farewell(text, skipTts || cachedOnly || fastMode, maxWaitMs);
 }
 
 function validSignature(url: string, params: URLSearchParams, signature: string, token: string) {
@@ -284,6 +290,14 @@ export async function POST(request: NextRequest) {
     if (reply.startsWith("Añadí los productos indicados.") && data.cart) {
       const details = describeAdditions(oldCart, session.cart);
       if (details) reply = reply.replace("Añadí los productos indicados.", `${details}.`);
+    }
+    // En una llamada real, la transcripción puede variar (p. ej. "grande,
+    // familiar"). Seleccionar respuestas validadas por el carrito impide
+    // generar voz nueva si la frase real es semánticamente la misma.
+    const demo = phoneDemoReply(oldCart, session.cart, reply, !!data.order);
+    if (demo && process.env.ORDERVOICE_PHONE_FAST_MODE === "enabled") {
+      reply = demo.text;
+      console.info("[OrderVoice voz] Respuesta rápida validada:", { profile: demo.key });
     }
     session.history.push({ role: "user", text: speech }, { role: "assistant", text: reply });
     session.history = session.history.slice(-8);
