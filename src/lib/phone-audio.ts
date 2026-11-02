@@ -1,7 +1,13 @@
 import { randomBytes } from "node:crypto";
 
 type Clip = { wav: Buffer; expiresAt: number };
-const clips = new Map<string, Clip>();
+// Next.js puede compilar cada ruta por separado. Compartimos la caché temporal
+// entre /api/telephony/twilio y /api/telephony/audio en el mismo proceso Node.
+const appGlobal = globalThis as typeof globalThis & {
+  __ordervoicePhoneClips?: Map<string, Clip>;
+};
+const clips = appGlobal.__ordervoicePhoneClips ??
+  (appGlobal.__ordervoicePhoneClips = new Map<string, Clip>());
 const TTL_MS = 5 * 60_000;
 const MAX_CLIPS = 32;
 const SAMPLE_RATE = 8_000;
