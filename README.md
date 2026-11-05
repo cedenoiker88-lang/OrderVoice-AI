@@ -1,5 +1,9 @@
 # OrderVoice AI — Starter v0.1
 
+> **¿Vas a instalar OrderVoice AI en Windows o en una computadora del laboratorio?** Sigue la **[Guía de instalación paso a paso para v0.6](docs/GUIA_INSTALACION_WINDOWS.md)**: programas que debes descargar, instalación con `npm.cmd`, modo demostración sin claves y opciones de Ollama y telefonía.
+>
+> **Aviso:** el texto siguiente documenta principalmente la versión inicial **v0.1**. Para la rama actual **dev/v0.6** y sus funciones telefónicas, consulta la guía anterior y los archivos de `docs/`.
+
 Prototipo local para una pizzería ficticia. Permite conversar por chat, dictar frases con el micrófono del navegador, calcular un carrito con precios controlados por el servidor y confirmar pedidos que se guardan **solo en este navegador**.
 
 > No recibe llamadas telefónicas. No se conecta a una cocina ni envía pedidos reales. No almacena datos personales de clientes. No sirve todavía para uso comercial.
