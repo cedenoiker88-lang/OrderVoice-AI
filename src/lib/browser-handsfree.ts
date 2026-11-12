@@ -1,4 +1,5 @@
 import { BrowserVoiceActivity } from "./browser-voice-activity";
+import { prepareSpanishCurrencySpeech } from "./spanish-currency-speech";
 
 export type HandsFreePhase = "idle" | "starting" | "listening" | "hearing" | "transcribing" | "processing" | "speaking";
 
@@ -222,7 +223,7 @@ export class BrowserHandsFreeSession {
     this.opts.onPhase("speaking");
     return new Promise<void>((resolve, reject) => {
       if (!this.active) { resolve(); return; }
-      const utterance = new SpeechSynthesisUtterance(text);
+      const utterance = new SpeechSynthesisUtterance(prepareSpanishCurrencySpeech(text));
       this.utterance = utterance;
       const voice = this.opts.preferredVoice();
       utterance.lang = voice?.lang || "es-ES";
