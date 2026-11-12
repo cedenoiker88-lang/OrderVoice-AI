@@ -5,7 +5,10 @@ import { MENU, calculateTotal, formatUSD, productById, type CartItem, type Confi
 import type { PendingPizza } from "@/lib/pizza-dialogue";
 
 type ChatMessage = { role: "assistant" | "user"; text: string };
+type IntentOperation = { kind: "add" | "remove" | "replace" | "set" | "keep_only"; productId: string; toProductId: string; quantity: number };
+type IntentDiagnostics = { intent: string; operations: IntentOperation[]; needsClarification: boolean };
 type ChatResponse = {
+  diagnostics?: IntentDiagnostics;
   cart: CartItem[];
   reply: string;
   order?: ConfirmedOrder;
@@ -59,6 +62,7 @@ export default function Home() {
   const [recording, setRecording] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
   const [lastTranscript, setLastTranscript] = useState("");
+  const [lastIntent, setLastIntent] = useState<IntentDiagnostics | null>(null);
   const [reviewTranscript, setReviewTranscript] = useState(false);
   const [reviewReady, setReviewReady] = useState(false);
 
@@ -412,6 +416,7 @@ export default function Home() {
         mode: data.mode
       });
       setMode(data.mode);
+      setLastIntent(data.diagnostics ?? null);
       pendingRef.current = data.pending ?? null;
       setPending(pendingRef.current);
       setError(data.notice ?? "");
@@ -473,6 +478,7 @@ export default function Home() {
     setLastTiming(null);
     setLastVoiceDelayMs(null);
     setLastTranscript("");
+    setLastIntent(null);
     setReviewReady(false);
     setLastRecognitionMs(null);
     setLastSpeechToTextMs(null);
@@ -483,7 +489,7 @@ export default function Home() {
   return (
     <div className="shell">
       <header className="header">
-        <div className="brand"><div className="brandmark">◉</div><div><strong>OrderVoice <span>AI</span></strong><small>Panel de pruebas · v0.8 transcripción</small></div></div>
+        <div className="brand"><div className="brandmark">◉</div><div><strong>OrderVoice <span>AI</span></strong><small>Panel de pruebas · v0.9 conversación inteligente</small></div></div>
         <div className="header-right"><span className="status-dot" /><span>Servidor de desarrollo</span><span className={`mode mode-${mode}`}>{mode === "ollama" ? "OLLAMA LOCAL" : mode === "ia" ? "IA ACTIVADA" : mode === "local" ? "REGLAS LOCALES" : mode === "demo" ? "MODO DEMO" : "MODO POR DETECTAR"}</span></div>
       </header>
 
@@ -520,6 +526,23 @@ export default function Home() {
           </div>
           {lastTranscript && <div className="stt-result" role="status">
             <strong>Texto reconocido por la API:</strong> {lastTranscript}
+          </div>}
+          {lastIntent && <div className="plan-result" aria-label="Interpretación de la inteligencia artificial">
+            <strong>Interpretación IA: </strong>
+            {lastIntent.needsClarification ? "Necesita aclaración" :
+              lastIntent.intent === "total" ? "Consultar total sin modificar" :
+              lastIntent.intent === "confirm" ? "Confirmar pedido" :
+              lastIntent.intent === "clear" ? "Vaciar carrito" :
+              lastIntent.intent === "question" ? "Responder consulta sin modificar" :
+              lastIntent.operations.length ? lastIntent.operations.map((op) => {
+                const current = productById(op.productId)?.name ?? op.productId;
+                const next = op.toProductId ? (productById(op.toProductId)?.name ?? op.toProductId) : "";
+                const verb = op.kind === "add" ? "Añadir" :
+                  op.kind === "remove" ? "Quitar" :
+                  op.kind === "set" ? "Cantidad final" :
+                  op.kind === "replace" ? "Sustituir" : "Conservar únicamente";
+                return `${verb}: ${op.quantity} × ${current}${next ? ` por ${next}` : ""}`;
+              }).join(" · ") : "Sin cambios"}
           </div>}
           {spanishVoices.length > 0 && <div className="voice-settings">
             <label htmlFor="voice-choice">Voz española de Edge:</label>
