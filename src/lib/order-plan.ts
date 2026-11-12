@@ -33,7 +33,8 @@ function productsDescription(cart: CartItem[]): string {
 function clearlyAuthorizes(message: string, kind: "confirm" | "clear"): boolean {
   const s = message.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
   if (/[¿?]/.test(message) || /\b(que pasa si|podria|deberia|como puedo|si quisiera|hipoteticamente)\b/.test(s)) return false;
-  if (/\bno\s+(?:quiero|deseo|debes|vayas|me|hay que|se debe)\b[^.!?]*\b(confirm|finaliz|vaciar|vacia|borrar|borra|cancelar|elimin|limpiar)\b/.test(s)) return false;
+  if (/\bno\s+(?:quiero|deseo|debes|vayas|me|hay que|se debe)\b[^.!?]*\b(?:confirm\w*|finaliz\w*|vaciar|vacia\w*|borrar|borra\w*|cancelar|elimin\w*|limpiar)\b/.test(s)) return false;
+  if (/^\s*no\s+(?:confirm\w*|finaliz\w*|vacia\w*|borr\w*|cancel\w*)\b/.test(s)) return false;
   return kind === "confirm"
     ? /\b(confirmo|confirmame|confirma|confirmar|finaliza|finalizar|realiza el pedido|haz el pedido)\b/.test(s)
     : /\b(vacia|vaciar|borrar todo|borra todo|limpiar el carrito|limpia el carrito|cancelar todo|cancela todo|elimina todo)\b/.test(s);
@@ -77,11 +78,25 @@ export function applyOrderPlan(cart: CartItem[], plan: OrderPlan, originalMessag
     return invalid("Necesito saber qué productos deseas agregar, quitar o cambiar.");
   }
 
+  const normalized = originalMessage.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  // Una negación textual explícita prevalece ante un plan incorrecto del modelo.
+  if (/(?:\bno quiero\b|\bno me\b|\bno vayas a\b|\bno debes\b)[^.?!]*\b(?:quitar|quita|eliminar|elimina|borrar|borra|sacar|saca|remover)\b/.test(normalized) &&
+      plan.operations.some((op) => ["remove", "keep_only"].includes(op.kind))) {
+    return invalid("La frase contiene una negación sobre eliminar productos. ¿Qué deseas conservar o quitar?");
+  }
+  if (/(?:\bno quiero\b|\bno me\b|\bno vayas a\b|\bno debes\b)[^.?!]*\b(?:agregar|agrega|anadir|anade|poner|pongas)\b/.test(normalized) &&
+      plan.operations.some((op) => op.kind === "add")) {
+    return invalid("La frase contiene una negación sobre agregar productos. ¿Qué deseas añadir realmente?");
+  }
+  if (/(?:\bno quiero\b|\bno\b)[^.?!]*\b(?:cambiar|cambia|cambies|reemplazar|reemplaza|sustituir|sustituye)\b/.test(normalized) &&
+      plan.operations.some((op) => op.kind === "replace")) {
+    return invalid("No aplicaré el reemplazo porque la frase lo niega o es ambigua.");
+  }
   const only = plan.operations.filter((op) => op.kind === "keep_only");
   if (only.length && only.length !== plan.operations.length) {
     return invalid("La lista final está mezclada con otros cambios. Dime solamente qué debe quedar.");
   }
-  if (only.length && !/\b(solo|solamente|unicamente|quedar|quede|queden|quedaria|deja|dejame|mantener|conservar|me quedo)\b/i
+  if (only.length && !/\b(solo|solamente|unicamente|quedar|quede|quedan|queden|quedaria|deja|dejo|dejame|mantener|conservar|me quedo)\b/i
     .test(originalMessage.normalize("NFD").replace(/[\u0300-\u036f]/g, ""))) {
     return invalid("Confírmame que quieres conservar solamente los productos que mencionaste.");
   }
