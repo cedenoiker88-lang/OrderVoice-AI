@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { MENU, calculateTotal, formatUSD, productById, type CartItem, type ConfirmedOrder } from "@/lib/menu";
 import type { PendingPizza } from "@/lib/pizza-dialogue";
+import { BrowserHandsFreeSession, type HandsFreePhase } from "@/lib/browser-handsfree";
 
 type ChatMessage = { role: "assistant" | "user"; text: string };
 type IntentOperation = { kind: "add" | "remove" | "replace" | "set" | "keep_only"; productId: string; toProductId: string; quantity: number };
@@ -65,6 +66,8 @@ export default function Home() {
   const [lastIntent, setLastIntent] = useState<IntentDiagnostics | null>(null);
   const [reviewTranscript, setReviewTranscript] = useState(false);
   const [reviewReady, setReviewReady] = useState(false);
+  const [handsFreePhase, setHandsFreePhase] = useState<HandsFreePhase>("idle");
+  const [handsFreeActive, setHandsFreeActive] = useState(false);
 
   const [error, setError] = useState("");
   const conversationRef = useRef<HTMLDivElement>(null);
@@ -85,6 +88,7 @@ export default function Home() {
   const recordingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sttAbortRef = useRef<AbortController | null>(null);
   const recordedChunksRef = useRef<Blob[]>([]);
+  const handsFreeRef = useRef<BrowserHandsFreeSession | null>(null);
 
 
   useEffect(() => {
@@ -367,7 +371,63 @@ export default function Home() {
     say("¡Hola! Soy OrderVoice. ¿Qué deseas pedir?", true);
   }
 
+  function toggleHandsFree() {
+    const existing = handsFreeRef.current;
+    if (existing?.isActive) {
+      existing.stop();
+      return;
+    }
+    if (busyRef.current || recording || transcribing) return;
+    if (!window.speechSynthesis || !navigator.mediaDevices?.getUserMedia) {
+      setError("Abre OrderVoice en http://localhost:3000 con Microsoft Edge y permite usar el micrófono.");
+      return;
+    }
+    // Mantener la captura detenida durante la reproducción del asistente
+    // evita el eco y los turnos falsos; solo VAD activa la transcripción.
+    const session = new BrowserHandsFreeSession({
+      onPhase: (phase) => {
+        setHandsFreePhase(phase);
+        setListening(phase === "listening" || phase === "hearing");
+        setTranscribing(phase === "transcribing");
+      },
+      onTranscript: (text) => {
+        setLastTranscript(text);
+        setLastVoiceDelayMs(null);
+        voiceTurnStartedRef.current = performance.now();
+      },
+      onTurn: async (text, signal) => {
+        // El módulo controla el TTS y la reanudación; send() solo actualiza
+        // el historial, la interpretación IA y el carrito una sola vez.
+        const response = await send(text, true, false, true, signal);
+        if (!response) throw new Error("La conversación se interrumpió antes de procesar el pedido.");
+        return { reply: response.reply, completed: Boolean(response.order) };
+      },
+      onError: (message) => setError(message),
+      onStop: () => {
+        handsFreeRef.current = null;
+        setHandsFreeActive(false);
+        setHandsFreePhase("idle");
+        setListening(false);
+        setTranscribing(false);
+      },
+      preferredVoice: () => {
+        const available = window.speechSynthesis.getVoices()
+          .filter((voice) => /^es(?:-|$)/i.test(voice.lang));
+        return available.find((voice) => voice.voiceURI === selectedVoice)
+          ?? available.find((voice) => /^es-EC$/i.test(voice.lang))
+          ?? available.find((voice) => /^es-(MX|CO|ES)$/i.test(voice.lang))
+          ?? available[0];
+      }
+    });
+    handsFreeRef.current = session;
+    setHandsFreeActive(true);
+    setLastTranscript("");
+    setError("");
+    void session.start();
+  }
+
   useEffect(() => () => {
+    handsFreeRef.current?.stop();
     voiceRef.current = false;
     generationRef.current += 1;
     if (retryRef.current) clearTimeout(retryRef.current);
@@ -383,9 +443,9 @@ export default function Home() {
     sttAbortRef.current?.abort();
   }, []);
 
-  async function send(text: string, browserVoice = false, forceSpeak = false) {
+  async function send(text: string, browserVoice = false, forceSpeak = false, skipSpeech = false, signal?: AbortSignal): Promise<ChatResponse | undefined> {
     const message = text.trim();
-    if (!message || busyRef.current) return;
+    if (!message || busyRef.current) return undefined;
     busyRef.current = true;
     setBusy(true);
     setError("");
@@ -405,9 +465,11 @@ export default function Home() {
           cart: cartRef.current,
           pending: pendingRef.current,
           history: previousMessages.slice(-8)
-        })
+        }),
+        signal
       });
       const data = (await response.json()) as ChatResponse;
+      if (signal?.aborted) return undefined;
       if (!response.ok) throw new Error(data.error ?? "Error al conectar con el servidor");
       setLastTiming({
         requestMs: Math.round(performance.now() - requestStartedAt),
@@ -424,7 +486,7 @@ export default function Home() {
       setCart(cartRef.current);
       messagesRef.current = [...messagesRef.current, { role: "assistant", text: data.reply }];
       setMessages(messagesRef.current);
-      say(data.reply, voiceRef.current || forceSpeak);
+      if (!skipSpeech) say(data.reply, voiceRef.current || forceSpeak);
       if (data.order) {
         setOrders((previous) => {
           const updated = [data.order!, ...previous].slice(0, 12);
@@ -432,9 +494,13 @@ export default function Home() {
           return updated;
         });
       }
+      return data;
     } catch (cause) {
+      if (signal?.aborted) return undefined;
       if (voiceRef.current) stopVoiceSession();
       setError(cause instanceof Error ? cause.message : "Ocurrió un error inesperado");
+      if (skipSpeech) throw cause;
+      return undefined;
     } finally {
       busyRef.current = false;
       setBusy(false);
@@ -468,6 +534,7 @@ export default function Home() {
   }
 
   function reset() {
+    handsFreeRef.current?.stop();
     if (voiceRef.current) stopVoiceSession();
     pendingRef.current = null;
     cartRef.current = [];
@@ -489,7 +556,7 @@ export default function Home() {
   return (
     <div className="shell">
       <header className="header">
-        <div className="brand"><div className="brandmark">◉</div><div><strong>OrderVoice <span>AI</span></strong><small>Panel de pruebas · v0.9 conversación inteligente</small></div></div>
+        <div className="brand"><div className="brandmark">◉</div><div><strong>OrderVoice <span>AI</span></strong><small>Panel de pruebas · v1.0 voz continua</small></div></div>
         <div className="header-right"><span className="status-dot" /><span>Servidor de desarrollo</span><span className={`mode mode-${mode}`}>{mode === "ollama" ? "OLLAMA LOCAL" : mode === "ia" ? "IA ACTIVADA" : mode === "local" ? "REGLAS LOCALES" : mode === "demo" ? "MODO DEMO" : "MODO POR DETECTAR"}</span></div>
       </header>
 
@@ -502,27 +569,27 @@ export default function Home() {
             {messages.map((message, index) => <div className={`message ${message.role}`} key={index}><span className="message-avatar">{message.role === "assistant" ? "✦" : "TÚ"}</span><div className="message-body"><span className="speaker">{message.role === "assistant" ? "OrderVoice" : "Cliente"}</span><p>{message.text}</p></div></div>)}
             {busy && <div className="thinking">OrderVoice está procesando tu pedido…</div>}
           </div>
-          <div className="voice-control">
-            <button type="button" className={voiceSession ? "voice-session active" : "voice-session"} onClick={toggleVoiceSession} disabled={(busy || recording || transcribing) && !voiceSession}>
-              {voiceSession ? "■ Terminar conversación" : "🎧 Iniciar conversación por voz"}
+          <div className="voice-control handsfree-control">
+            <button type="button"
+              className={handsFreeActive ? "voice-session active" : "voice-session"}
+              onClick={toggleHandsFree}
+              disabled={!handsFreeActive && (busy || recording || transcribing)}>
+              {handsFreeActive ? "■ Finalizar conversación" : "🎙 Iniciar conversación continua"}
             </button>
-            <span role="status">{voiceSession ? (listening ? "Escuchando al cliente…" : busy ? "Procesando el pedido…" : "OrderVoice está hablando o preparando la escucha…") : "Inicio manual de conversación"}</span>
+            <span role="status" aria-live="polite">{!handsFreeActive
+              ? "Un solo clic para comenzar; después habla con naturalidad."
+              : handsFreePhase === "starting" ? "Preparando el micrófono y el saludo…"
+              : handsFreePhase === "listening" ? "🎙 Escuchando: habla cuando quieras…"
+              : handsFreePhase === "hearing" ? "🎙 Te escucho; terminaré al detectar una pausa…"
+              : handsFreePhase === "transcribing" ? "Convirtiendo tu voz en texto con OpenAI…"
+              : handsFreePhase === "processing" ? "Interpretando el pedido y verificando el carrito…"
+              : handsFreePhase === "speaking" ? "🔊 OrderVoice está respondiendo; volveré a escucharte…"
+              : "Preparando el siguiente turno…"}
+            </span>
           </div>
-          <div className="stt-controls">
-            <button type="button" className={recording ? "secondary stt-recording" : "secondary"}
-              disabled={voiceSession || busy || transcribing} onClick={() => { void toggleApiRecording(); }}>
-              {recording ? "■ Detener y transcribir" : "🎙 Grabar con transcripción OpenAI"}
-            </button>
-            <span role="status">{transcribing ? "Transcribiendo el audio mediante API…" :
-              recording ? "Grabando… habla ahora. Máximo 18 segundos." :
-              "Opcional: cada transcripción consume créditos OpenAI. No usa Twilio."}</span>
-          </div>
-          <div className="stt-review">
-            <label><input type="checkbox" checked={reviewTranscript}
-              onChange={(event) => setReviewTranscript(event.target.checked)}
-              disabled={recording || transcribing}/>
-              Revisar y corregir el texto antes de enviarlo al motor
-            </label>
+          <div className="handsfree-notice">
+            OpenAI transcribe cada frase detectada y procesa el pedido (puede generar cargos).
+            No se utiliza Twilio. Puedes finalizar la conversación en cualquier momento.
           </div>
           {lastTranscript && <div className="stt-result" role="status">
             <strong>Texto reconocido por la API:</strong> {lastTranscript}
@@ -547,7 +614,7 @@ export default function Home() {
           {spanishVoices.length > 0 && <div className="voice-settings">
             <label htmlFor="voice-choice">Voz española de Edge:</label>
             <select id="voice-choice" value={selectedVoice} onChange={(event) => setSelectedVoice(event.target.value)}
-              disabled={voiceSession} aria-label="Seleccionar voz en español">
+              disabled={voiceSession || handsFreeActive} aria-label="Seleccionar voz en español">
               <option value="">Automática (español)</option>
               {spanishVoices.map((voice) => <option value={voice.voiceURI} key={voice.voiceURI}>{voice.name} ({voice.lang})</option>)}
             </select>
@@ -563,11 +630,11 @@ export default function Home() {
           </div>}
           {error && <p className="error" role="alert">⚠ {error}</p>}
           <form className="composer" onSubmit={(event) => {event.preventDefault(); const fromReview = reviewReady; setReviewReady(false); void send(input, fromReview, fromReview);}}>
-            <button className={`mic ${listening ? "active" : ""}`} type="button" aria-label="Dictar pedido" title="Hablar con el micrófono" disabled={busy || voiceSession || recording || transcribing} onClick={startMicrophone}>{listening ? "◉" : "🎙"}</button>
+            
             <input aria-label="Escribe el pedido" placeholder="Ej.: dos pepperoni familiares y una hawaiana mediana" maxLength={500} value={input} onChange={(event) => setInput(event.target.value)} disabled={busy}/>
-            <button className="send" type="submit" disabled={busy || !input.trim()}>Enviar <span>➜</span></button>
+            <button className="send" type="submit" disabled={busy || handsFreeActive || !input.trim()}>Enviar <span>➜</span></button>
           </form>
-          <div className="chat-footer"><label><input type="checkbox" checked={speakReplies} onChange={(event) => setSpeakReplies(event.target.checked)}/> Leer las respuestas en voz alta</label><span>{listening ? "🎙 Escuchando…" : "Micrófono opcional"}</span></div>
+          <div className="chat-footer"><label><input type="checkbox" checked={speakReplies} onChange={(event) => setSpeakReplies(event.target.checked)}/> Leer las respuestas en voz alta</label><span>{handsFreeActive ? "🎙 Conversación continua activa" : "Micrófono de conversación disponible arriba"}</span></div>
         </section>
 
         <aside className="right-column">
