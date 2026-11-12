@@ -30,7 +30,7 @@ assert.equal(r.heard,true);assert.equal(r.events[0]?.state,"end");
 assert.ok(r.events[0].at>1700);count++;
 r=sequence([[24000,0.002]]);
 assert.equal(r.heard,false);assert.equal(r.events[0]?.state,"restart");count++;
-r=sequence([[500,0.002],[18000,0.055]]);
+r=sequence([[500,0.002],[18500,0.055]]);
 assert.equal(r.heard,true);assert.equal(r.events[0]?.state,"end");count++;
 r=sequence([[500,0.002],[320,0.045],[300,0.002]]);
 assert.equal(r.heard,true);assert.equal(r.events.length,0);count++;
