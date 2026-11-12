@@ -7,6 +7,7 @@ import { applyCommand, demoUnderstand, guardDestructiveIntent, type Command } fr
 import { understandWithOllama } from "@/lib/ollama";
 import { advancePizzaConversation, sanitizePending } from "@/lib/pizza-dialogue";
 import { fastUnderstand } from "@/lib/fast-intents";
+import { normalizeVoiceTranscript } from "@/lib/voice-vocabulary";
 
 export const runtime = "nodejs";
 
@@ -45,6 +46,9 @@ export async function POST(request: NextRequest) {
     const raw = body as Record<string, unknown>;
     const message = typeof raw.message === "string" ? raw.message.trim() : "";
     if (!message || message.length > 500) return NextResponse.json({ error: "El mensaje debe tener entre 1 y 500 caracteres" }, { status: 400 });
+    // Mantener el mensaje original para guardas de seguridad y trazabilidad.
+    // Solo las transcripciones del navegador se normalizan; Twilio queda intacto.
+    const interpretedMessage = raw.browserVoice === true ? normalizeVoiceTranscript(message) : message;
     const cart = sanitizeCart(raw.cart);
     // Evita que el modelo local agote los 15 s permitidos a una llamada por Twilio.
     const telephoneMode = raw.telephoneMode === true;
@@ -52,8 +56,8 @@ export async function POST(request: NextRequest) {
     // El motor determinista resuelve aclaraciones antes de consultar al modelo.
     const incomingPending = sanitizePending(raw.pending);
     const interpretationStartedAt = performance.now();
-    const pizzaTurn = advancePizzaConversation(message, incomingPending, cart);
-    const fastCommand = pizzaTurn ? null : fastUnderstand(message);
+    const pizzaTurn = advancePizzaConversation(interpretedMessage, incomingPending, cart);
+    const fastCommand = pizzaTurn ? null : fastUnderstand(interpretedMessage);
     let pending = pizzaTurn ? pizzaTurn.pending : incomingPending;
     const configuredProvider = process.env.ORDERVOICE_PROVIDER ?? "ollama";
     let mode: "ollama" | "demo" | "ia" | "local" = "demo";
@@ -66,9 +70,9 @@ export async function POST(request: NextRequest) {
       command = fastCommand;
       mode = "local";
     } else if (configuredProvider === "demo") {
-      command = demoUnderstand(message);
+      command = demoUnderstand(interpretedMessage);
     } else if (configuredProvider === "openai" && process.env.OPENAI_API_KEY) {
-      command = await understandWithAI(message, cart, raw.history);
+      command = await understandWithAI(interpretedMessage, cart, raw.history);
       mode = "ia";
     } else {
       const history = Array.isArray(raw.history) ? raw.history.slice(-4)
@@ -76,7 +80,7 @@ export async function POST(request: NextRequest) {
         .filter((entry) => (entry.role === "user" || entry.role === "assistant") && typeof entry.text === "string")
         .map((entry) => ({ role: entry.role as "user" | "assistant", text: String(entry.text).slice(0, 250) })) : [];
       try {
-        command = await understandWithOllama(message, cart, history, telephoneMode ? 4_500 : 90_000);
+        command = await understandWithOllama(interpretedMessage, cart, history, telephoneMode ? 4_500 : 90_000);
         mode = "ollama";
       } catch (error) {
         console.warn("Ollama local no disponible; modo demo:", error);
