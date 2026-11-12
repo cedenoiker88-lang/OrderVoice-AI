@@ -14,3 +14,13 @@
 
 /* Prueba de voz en Edge (selector solo de voces españolas instaladas) */
 .voice-settings{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:0 22px 10px;color:#63728b;font-size:12px}.voice-settings select{max-width:100%;min-width:210px;border:1px solid #dbe4f1;border-radius:8px;padding:7px 10px;color:#233553;background:white}.voice-settings label{font-weight:600}
+
+/* v0.8: grabación explícita y transcripción opcional por API (no Twilio). */
+.stt-controls{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:9px 22px;border-top:1px solid #edf0f6;background:#fff}
+.stt-controls button{font-size:12px;padding:10px 14px;font-weight:650}
+.stt-recording{background:#fff0f0;border-color:#ed96a6;color:#af2542;animation:voice-pulse 1.5s infinite}
+.stt-controls span{color:#6a7890;font-size:11px}
+.stt-result{background:#f0f7ff;padding:11px 22px;font-size:12px;color:#214269;line-height:1.55;border-top:1px solid #daeafa;overflow-wrap:anywhere}
+.stt-result strong{font-weight:700}
+@keyframes voice-pulse{50%{background:#ffdfe5}}
+@media(max-width:670px){.stt-controls{padding:10px 13px}.stt-controls button{width:100%}.stt-result{padding:11px 13px}}
