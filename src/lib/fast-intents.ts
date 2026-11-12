@@ -52,7 +52,7 @@ export function fastUnderstand(message: string): Command | null {
 
   // Se admite solo una petición simple de gaseosa. Los pedidos compuestos,
   // negaciones y correcciones quedan para el intérprete habitual.
-  const drink = text.match(/^(?:quiero|quisiera|dame|agrega|anade|ponme|me das|necesito|pon|me pones|me puedes dar|me podrias dar|agregame|anademe|sumame)\\s+(?:(un|una|uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|\\d+)\\s+)?(?:gaseosas?|colas?|refrescos?|sodas?)(?:\\s+(?:de\\s+)?(?:un\\s+)?(?:1\\s+)?litro)?$/);
+  const drink = text.match(/^(?:quiero|quisiera|dame|agrega|anade|ponme|me das|necesito|pon|me pones|me puedes dar|me podrias dar|agregame|anademe|sumame)\s+(?:(un|una|uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|\d+)\s+)?(?:gaseosas?|colas?|refrescos?|sodas?)(?:\s+(?:de\s+)?(?:un\s+)?(?:1\s+)?litro)?$/);
   if (drink) {
     const quantity = drink[1] ? NUMBER_WORDS[drink[1]] ?? Number(drink[1]) : 1;
     if (!Number.isInteger(quantity) || quantity < 1 || quantity > 20) {
