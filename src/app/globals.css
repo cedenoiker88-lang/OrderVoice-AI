@@ -11,3 +11,6 @@
 .performance{display:flex;align-items:center;flex-wrap:wrap;gap:7px 16px;padding:9px 21px;color:#6a7890;font-size:11px;border-top:1px solid #eef1f6;background:#f9fbff}
 .performance strong{font-variant-numeric:tabular-nums;color:#285fb8}
 @media(max-width:670px){.performance{padding:9px 13px;gap:6px 12px}}
+
+/* Prueba de voz en Edge (selector solo de voces españolas instaladas) */
+.voice-settings{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:0 22px 10px;color:#63728b;font-size:12px}.voice-settings select{max-width:100%;min-width:210px;border:1px solid #dbe4f1;border-radius:8px;padding:7px 10px;color:#233553;background:white}.voice-settings label{font-weight:600}
