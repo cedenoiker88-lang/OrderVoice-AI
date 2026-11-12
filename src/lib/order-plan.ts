@@ -81,11 +81,13 @@ export function applyOrderPlan(cart: CartItem[], plan: OrderPlan, originalMessag
   const normalized = originalMessage.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
   // Una negación textual explícita prevalece ante un plan incorrecto del modelo.
   if (/(?:\bno quiero\b|\bno me\b|\bno vayas a\b|\bno debes\b)[^.?!]*\b(?:quit\w*|elimin\w*|borr\w*|sac\w*|remov\w*)\b/.test(normalized) &&
-      plan.operations.some((op) => ["remove", "keep_only"].includes(op.kind))) {
+      plan.operations.some((op) => ["remove", "keep_only"].includes(op.kind) ||
+        (op.kind === "set" && op.quantity < (cart.find((line) => line.productId === op.productId)?.quantity ?? 0)))) {
     return invalid("La frase contiene una negación sobre eliminar productos. ¿Qué deseas conservar o quitar?");
   }
   if (/(?:\bno quiero\b|\bno me\b|\bno vayas a\b|\bno debes\b)[^.?!]*\b(?:agreg\w*|anad\w*|pon\w*|poner)\b/.test(normalized) &&
-      plan.operations.some((op) => op.kind === "add")) {
+      plan.operations.some((op) => op.kind === "add" ||
+        (op.kind === "set" && op.quantity > (cart.find((line) => line.productId === op.productId)?.quantity ?? 0)))) {
     return invalid("La frase contiene una negación sobre agregar productos. ¿Qué deseas añadir realmente?");
   }
   if (/\bno\s+(?:(?:quiero|deseo)\s+(?:que\s+)?|(?:me|la|lo|las|los)\s+|vayas\s+a\s+)?(?:cambiar|cambia|cambies|reemplac\w*|reemplaz\w*|sustituy\w*|sustituir)\b/.test(normalized) &&
