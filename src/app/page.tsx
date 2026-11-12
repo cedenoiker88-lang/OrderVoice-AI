@@ -56,6 +56,10 @@ export default function Home() {
   const [voiceSession, setVoiceSession] = useState(false);
   const [spanishVoices, setSpanishVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [selectedVoice, setSelectedVoice] = useState("");
+  const [recording, setRecording] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
+  const [lastTranscript, setLastTranscript] = useState("");
+
   const [error, setError] = useState("");
   const conversationRef = useRef<HTMLDivElement>(null);
   const busyRef = useRef(false);
@@ -70,6 +74,12 @@ export default function Home() {
   const retryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const voiceTurnStartedRef = useRef<number | null>(null);
   const silenceCountRef = useRef(0);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const recordingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const sttAbortRef = useRef<AbortController | null>(null);
+  const recordedChunksRef = useRef<Blob[]>([]);
+
 
   useEffect(() => {
     try {
@@ -98,6 +108,97 @@ export default function Home() {
     conversation.scrollTo({ top: conversation.scrollHeight, behavior: "smooth" });
   }, [messages, busy]);
 
+
+  function closeMicrophoneCapture() {
+    if (recordingTimerRef.current) clearTimeout(recordingTimerRef.current);
+    recordingTimerRef.current = null;
+    mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+    mediaStreamRef.current = null;
+    mediaRecorderRef.current = null;
+    setRecording(false);
+  }
+
+  async function toggleApiRecording() {
+    if (recording) {
+      if (mediaRecorderRef.current?.state === "recording") mediaRecorderRef.current.stop();
+      setRecording(false);
+      return;
+    }
+    if (busyRef.current || voiceRef.current || listening || transcribing) return;
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+      setError("El navegador no permite grabar audio. Abre http://localhost:3000 en Edge y verifica el micrófono.");
+      return;
+    }
+    const mime = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"]
+      .find((item) => MediaRecorder.isTypeSupported(item));
+    if (!mime) {
+      setError("El formato de grabación del navegador no es compatible. Prueba Microsoft Edge actualizado.");
+      return;
+    }
+    try {
+      window.speechSynthesis?.cancel();
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+      });
+      mediaStreamRef.current = stream;
+      recordedChunksRef.current = [];
+      setLastTranscript("");
+      setError("");
+      const recorder = new MediaRecorder(stream, { mimeType: mime });
+      mediaRecorderRef.current = recorder;
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) recordedChunksRef.current.push(event.data);
+      };
+      recorder.onerror = () => {
+        closeMicrophoneCapture();
+        setError("No pude grabar el audio. Comprueba el permiso de micrófono.");
+      };
+      recorder.onstop = async () => {
+        closeMicrophoneCapture();
+        const recorded = new Blob(recordedChunksRef.current, { type: mime });
+        recordedChunksRef.current = [];
+        if (recorded.size < 150) {
+          setError("No recibí suficiente audio. Pulsa Grabar y habla antes de detener la grabación.");
+          return;
+        }
+        if (recorded.size > 8 * 1024 * 1024) {
+          setError("El audio excede 8 MB. Prueba una frase más corta.");
+          return;
+        }
+        const controller = new AbortController();
+        sttAbortRef.current = controller;
+        setTranscribing(true);
+        try {
+          const form = new FormData();
+          form.append("audio", recorded, mime.includes("mp4") ? "pedido.mp4" : "pedido.webm");
+          const result = await fetch("/api/browser-transcribe", { method: "POST", body: form, signal: controller.signal });
+          const data = await result.json() as { text?: string; error?: string };
+          if (!result.ok || !data.text) throw new Error(data.error ?? "No se pudo reconocer tu voz.");
+          const transcript = data.text.trim();
+          setLastTranscript(transcript);
+          // Se conserva el texto leído por la API en el historial y se envía
+          // al motor de pedidos. La respuesta se lee con la voz de Edge.
+          setTranscribing(false);
+          if (sttAbortRef.current === controller) sttAbortRef.current = null;
+          await send(transcript, true, true);
+        } catch (cause) {
+          if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : "Fallo de transcripción.");
+        } finally {
+          setTranscribing(false);
+          if (sttAbortRef.current === controller) sttAbortRef.current = null;
+        }
+      };
+      recorder.start();
+      setRecording(true);
+      // Evitar grabaciones largas y consumos imprevistos: máximo 18 segundos.
+      recordingTimerRef.current = setTimeout(() => {
+        if (recorder.state === "recording") recorder.stop();
+      }, 18_000);
+    } catch {
+      closeMicrophoneCapture();
+      setError("No pude acceder al micrófono. Permite el acceso en Edge y revisa la entrada de audio de Windows.");
+    }
+  }
 
   function stopVoiceSession() {
     generationRef.current += 1;
@@ -255,9 +356,13 @@ export default function Home() {
     if (retryRef.current) clearTimeout(retryRef.current);
     recognitionRef.current?.stop();
     window.speechSynthesis?.cancel();
+    if (recordingTimerRef.current) clearTimeout(recordingTimerRef.current);
+    mediaRecorderRef.current?.stop();
+    mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+    sttAbortRef.current?.abort();
   }, []);
 
-  async function send(text: string, browserVoice = false) {
+  async function send(text: string, browserVoice = false, forceSpeak = false) {
     const message = text.trim();
     if (!message || busyRef.current) return;
     busyRef.current = true;
@@ -297,7 +402,7 @@ export default function Home() {
       setCart(cartRef.current);
       messagesRef.current = [...messagesRef.current, { role: "assistant", text: data.reply }];
       setMessages(messagesRef.current);
-      say(data.reply, voiceRef.current);
+      say(data.reply, voiceRef.current || forceSpeak);
       if (data.order) {
         setOrders((previous) => {
           const updated = [data.order!, ...previous].slice(0, 12);
@@ -350,6 +455,7 @@ export default function Home() {
     setMessages([initialMessage]);
     setLastTiming(null);
     setLastVoiceDelayMs(null);
+    setLastTranscript("");
     setLastRecognitionMs(null);
     setLastSpeechToTextMs(null);
     setError("");
@@ -359,7 +465,7 @@ export default function Home() {
   return (
     <div className="shell">
       <header className="header">
-        <div className="brand"><div className="brandmark">◉</div><div><strong>OrderVoice <span>AI</span></strong><small>Panel de pruebas · v0.7 voz navegador</small></div></div>
+        <div className="brand"><div className="brandmark">◉</div><div><strong>OrderVoice <span>AI</span></strong><small>Panel de pruebas · v0.8 transcripción</small></div></div>
         <div className="header-right"><span className="status-dot" /><span>Servidor de desarrollo</span><span className={`mode mode-${mode}`}>{mode === "ollama" ? "OLLAMA LOCAL" : mode === "ia" ? "IA ACTIVADA" : mode === "local" ? "REGLAS LOCALES" : mode === "demo" ? "MODO DEMO" : "MODO POR DETECTAR"}</span></div>
       </header>
 
@@ -373,11 +479,23 @@ export default function Home() {
             {busy && <div className="thinking">OrderVoice está procesando tu pedido…</div>}
           </div>
           <div className="voice-control">
-            <button type="button" className={voiceSession ? "voice-session active" : "voice-session"} onClick={toggleVoiceSession} disabled={busy && !voiceSession}>
+            <button type="button" className={voiceSession ? "voice-session active" : "voice-session"} onClick={toggleVoiceSession} disabled={(busy || recording || transcribing) && !voiceSession}>
               {voiceSession ? "■ Terminar conversación" : "🎧 Iniciar conversación por voz"}
             </button>
             <span role="status">{voiceSession ? (listening ? "Escuchando al cliente…" : busy ? "Procesando el pedido…" : "OrderVoice está hablando o preparando la escucha…") : "Inicio manual de conversación"}</span>
           </div>
+          <div className="stt-controls">
+            <button type="button" className={recording ? "secondary stt-recording" : "secondary"}
+              disabled={voiceSession || busy || transcribing} onClick={() => { void toggleApiRecording(); }}>
+              {recording ? "■ Detener y transcribir" : "🎙 Grabar con transcripción OpenAI"}
+            </button>
+            <span role="status">{transcribing ? "Transcribiendo el audio mediante API…" :
+              recording ? "Grabando… habla ahora. Máximo 18 segundos." :
+              "Opcional: cada transcripción consume créditos OpenAI. No usa Twilio."}</span>
+          </div>
+          {lastTranscript && <div className="stt-result" role="status">
+            <strong>Texto reconocido por la API:</strong> {lastTranscript}
+          </div>}
           {spanishVoices.length > 0 && <div className="voice-settings">
             <label htmlFor="voice-choice">Voz española de Edge:</label>
             <select id="voice-choice" value={selectedVoice} onChange={(event) => setSelectedVoice(event.target.value)}
@@ -397,7 +515,7 @@ export default function Home() {
           </div>}
           {error && <p className="error" role="alert">⚠ {error}</p>}
           <form className="composer" onSubmit={(event) => {event.preventDefault(); void send(input);}}>
-            <button className={`mic ${listening ? "active" : ""}`} type="button" aria-label="Dictar pedido" title="Hablar con el micrófono" disabled={busy || voiceSession} onClick={startMicrophone}>{listening ? "◉" : "🎙"}</button>
+            <button className={`mic ${listening ? "active" : ""}`} type="button" aria-label="Dictar pedido" title="Hablar con el micrófono" disabled={busy || voiceSession || recording || transcribing} onClick={startMicrophone}>{listening ? "◉" : "🎙"}</button>
             <input aria-label="Escribe el pedido" placeholder="Ej.: dos pepperoni familiares y una hawaiana mediana" maxLength={500} value={input} onChange={(event) => setInput(event.target.value)} disabled={busy}/>
             <button className="send" type="submit" disabled={busy || !input.trim()}>Enviar <span>➜</span></button>
           </form>
