@@ -179,6 +179,7 @@ export class BrowserHandsFreeSession {
           ? new Blob(chunks, { type: mime }) : null;
         finish(audio && audio.size >= 150 ? audio : null);
       };
+      let wasHearing = false;
       const tick = () => {
         if (!this.active || recorder.state !== "recording") return;
         analyser.getFloatTimeDomainData(sample);
@@ -186,7 +187,7 @@ export class BrowserHandsFreeSession {
         for (let i = 0; i < sample.length; i++) power += sample[i] * sample[i];
         const rms = Math.sqrt(power / sample.length);
         const phase = detector.update(rms, performance.now());
-        if (phase === "speaking") this.opts.onPhase("hearing");
+        if (phase === "speaking" && !wasHearing) { wasHearing = true; this.opts.onPhase("hearing"); }
         if (phase === "end" || phase === "restart") {
           recorder.stop();
           return;
