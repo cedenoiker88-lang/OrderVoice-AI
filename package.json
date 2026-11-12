@@ -11,6 +11,7 @@
     "test:ollama": "node scripts/test-ollama.cjs",
     "test:dialogue": "node scripts/test-dialogue.cjs",
     "test:fast": "node scripts/test-fast-intents.cjs",
+    "test:browser:voice": "node scripts/test-browser-voice.cjs",
     "test:phone": "node scripts/test-twilio-webhook.cjs",
     "diagnose:phone": "node scripts/diagnose-twilio-signature.cjs",
     "verify:twilio": "node scripts/verify-twilio-credentials.cjs",
