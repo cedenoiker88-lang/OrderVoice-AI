@@ -80,6 +80,7 @@ export async function POST(request: NextRequest) {
         const serverMs = Math.round(performance.now() - startedAt);
         const response = NextResponse.json({
           ...result, order, mode: "ia", pending: null,
+          diagnostics: { intent: plan.intent, operations: plan.operations, needsClarification: plan.needsClarification },
           metrics: { interpretMs, serverMs }
         });
         response.headers.set("Cache-Control", "no-store");
