@@ -8,6 +8,8 @@ import { understandWithOllama } from "@/lib/ollama";
 import { advancePizzaConversation, sanitizePending } from "@/lib/pizza-dialogue";
 import { fastUnderstand } from "@/lib/fast-intents";
 import { normalizeVoiceTranscript } from "@/lib/voice-vocabulary";
+import { applyOrderPlan } from "@/lib/order-plan";
+import { understandOrderPlan } from "@/lib/ai-order-planner";
 
 export const runtime = "nodejs";
 
@@ -50,6 +52,46 @@ export async function POST(request: NextRequest) {
     // Solo las transcripciones del navegador se normalizan; Twilio queda intacto.
     const interpretedMessage = raw.browserVoice === true ? normalizeVoiceTranscript(message) : message;
     const cart = sanitizeCart(raw.cart);
+    // v0.9: en el navegador con proveedor OpenAI, interpretar un PLAN de
+    // operaciones y validarlo atómicamente en el servidor. No se utiliza
+    // para Twilio ni altera la ruta telefónica anterior.
+    const intelligentBrowser = raw.telephoneMode !== true &&
+      process.env.ORDERVOICE_PROVIDER === "openai";
+    if (intelligentBrowser) {
+      if (!process.env.OPENAI_API_KEY) {
+        return NextResponse.json({ error: "Falta OPENAI_API_KEY para el motor inteligente." }, { status: 503 });
+      }
+      const history = Array.isArray(raw.history) ? raw.history.slice(-8)
+        .filter((entry): entry is Record<string, unknown> => !!entry && typeof entry === "object")
+        .filter((entry) => (entry.role === "user" || entry.role === "assistant") && typeof entry.text === "string")
+        .map((entry) => ({
+          role: entry.role as "user" | "assistant",
+          text: String(entry.text).slice(0, 300)
+        })) : [];
+      try {
+        const interpretStarted = performance.now();
+        const plan = await understandOrderPlan(interpretedMessage, cart, history);
+        const result = applyOrderPlan(cart, plan, message);
+        const order = result.confirmed
+          ? { id: crypto.randomUUID().slice(0, 8).toUpperCase(),
+              createdAt: new Date().toISOString(), items: cart, totalCents: calculateTotal(cart) }
+          : undefined;
+        const interpretMs = Math.round(performance.now() - interpretStarted);
+        const serverMs = Math.round(performance.now() - startedAt);
+        const response = NextResponse.json({
+          ...result, order, mode: "ia", pending: null,
+          metrics: { interpretMs, serverMs }
+        });
+        response.headers.set("Cache-Control", "no-store");
+        response.headers.set("Server-Timing", `interpret;dur=${interpretMs}, total;dur=${serverMs}`);
+        return response;
+      } catch (cause) {
+        console.error("Intérprete estructurado no disponible:", cause instanceof Error ? cause.name : "error");
+        return NextResponse.json({
+          error: "La IA no pudo interpretar el pedido. No modifiqué tu carrito. Repite la frase o revisa tu conexión y la clave API."
+        }, { status: 502 });
+      }
+    }
     // Evita que el modelo local agote los 15 s permitidos a una llamada por Twilio.
     const telephoneMode = raw.telephoneMode === true;
     // Un pedido incompleto mantiene sus campos pendientes entre mensajes.
