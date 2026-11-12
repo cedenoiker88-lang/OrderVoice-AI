@@ -103,6 +103,16 @@ export function advancePizzaConversation(message: string, pending: PendingPizza 
   }
 
 
+  // Negar un producto o preguntar por quitar ingredientes NO significa pedirlo.
+  // Si el cliente solicita una personalización no incluida en el menú, aclarar
+  // antes de modificar el carrito.
+  if (/\b(?:no me (?:agregues|anadas|pongas|des)|no quiero que (?:agregues|anadas|pongas)|no quiero (?:una|ninguna) pizza|sin (?:agregar|anadir|poner))\b/.test(text)) {
+    return question("Entendido, no he añadido ninguna pizza. ¿Qué producto deseas pedir?", pending);
+  }
+  if (/\bpizzas?\b[^.]*\bsin\s+(?:queso|cebolla|jamon|pina|salsa|ingredientes)\b/.test(text)) {
+    return question("En esta demostración todavía no gestiono cambios de ingredientes. ¿Deseas una pizza del menú tal como se ofrece?", pending);
+  }
+
   if (pending) {
     if (/\b(olvida|descarta)\b.*\b(pizza|pedido)|\bno quiero esa pizza\b/.test(text)) {
       return question("Entendido, descarté esa pizza pendiente. ¿Qué deseas pedir ahora?", null);
