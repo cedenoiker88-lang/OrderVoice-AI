@@ -23,7 +23,7 @@ export class BrowserHandsFreeSession {
   private analyser: AnalyserNode | null = null;
   private recorder: MediaRecorder | null = null;
   private frame = 0;
-  private sample: Float32Array<ArrayBuffer> | null = null;
+  private sample: Float32Array | null = null;
   private resolveCapture: ((audio: Blob | null) => void) | null = null;
   private cancelled = new AbortController();
   private utterance: SpeechSynthesisUtterance | null = null;
