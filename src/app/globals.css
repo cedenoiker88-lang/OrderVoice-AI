@@ -31,3 +31,11 @@
 /* v0.9: muestra la operación que la IA propuso y el servidor validó. */
 .plan-result{background:#f2f6ff;border-top:1px solid #e1e9f7;padding:10px 22px;color:#2a4366;font-size:12px;line-height:1.6;overflow-wrap:anywhere}.plan-result strong{font-weight:750}
 @media(max-width:670px){.plan-result{padding:10px 13px}}
+
+/* Modo conversación continua: un único control principal de micrófono. */
+.handsfree-control{display:flex;gap:14px;align-items:center;flex-wrap:wrap;padding:18px 22px 13px}
+.handsfree-control .voice-session{min-width:235px}
+.handsfree-control span[role="status"]{font-weight:500;color:#344868;font-size:13px}
+.handsfree-control .voice-session.active{background:#c12d45;border-color:#c12d45;color:#fff}
+.handsfree-notice{padding:0 22px 14px;font-size:11px;color:#62748c;line-height:1.5;background:#fff}
+@media(max-width:700px){.handsfree-control{padding:14px 13px;gap:9px}.handsfree-control .voice-session{width:100%;min-width:0}.handsfree-notice{padding:0 13px 12px}}
