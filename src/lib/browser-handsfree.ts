@@ -23,7 +23,7 @@ export class BrowserHandsFreeSession {
   private analyser: AnalyserNode | null = null;
   private recorder: MediaRecorder | null = null;
   private frame = 0;
-  private sample: Float32Array | null = null;
+  private sample: Parameters<AnalyserNode["getFloatTimeDomainData"]>[0] | null = null;
   private resolveCapture: ((audio: Blob | null) => void) | null = null;
   private cancelled = new AbortController();
   private utterance: SpeechSynthesisUtterance | null = null;
@@ -64,7 +64,7 @@ export class BrowserHandsFreeSession {
       this.analyser = this.context.createAnalyser();
       this.analyser.fftSize = 2048;
       source.connect(this.analyser);
-      this.sample = new Float32Array(new ArrayBuffer(this.analyser.fftSize * Float32Array.BYTES_PER_ELEMENT));
+      this.sample = new Float32Array(this.analyser.fftSize) as Parameters<AnalyserNode["getFloatTimeDomainData"]>[0];
 
       await this.speak("¡Hola! Soy OrderVoice, tu asistente virtual. ¿Qué deseas pedir hoy?");
       // Un pequeño margen impide que el micrófono capte el final del saludo.
