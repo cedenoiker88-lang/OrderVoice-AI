@@ -58,6 +58,26 @@ export async function POST(request: NextRequest) {
     const intelligentBrowser = raw.telephoneMode !== true &&
       process.env.ORDERVOICE_PROVIDER === "openai";
     if (intelligentBrowser) {
+      // La app puede estar expuesta por ngrok para Twilio: bloquear peticiones
+      // externas al motor OpenAI de pruebas para evitar consumo abusivo.
+      const localhost = (hostname: string) =>
+        hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]";
+      const target = new URL(request.url);
+      const forwarded = request.headers.get("x-forwarded-host")?.split(",")[0]?.trim();
+      const forwardedHostname = forwarded ? new URL("http://" + forwarded).hostname : null;
+      if (!localhost(target.hostname) || (forwardedHostname && !localhost(forwardedHostname))) {
+        return NextResponse.json({ error: "El motor OpenAI de pruebas solo está disponible en localhost." }, { status: 403 });
+      }
+      const origin = request.headers.get("origin");
+      if (origin) {
+        try {
+          if (new URL(origin).host !== target.host) {
+            return NextResponse.json({ error: "Origen no autorizado." }, { status: 403 });
+          }
+        } catch {
+          return NextResponse.json({ error: "Origen inválido." }, { status: 403 });
+        }
+      }
       if (!process.env.OPENAI_API_KEY) {
         return NextResponse.json({ error: "Falta OPENAI_API_KEY para el motor inteligente." }, { status: 503 });
       }
