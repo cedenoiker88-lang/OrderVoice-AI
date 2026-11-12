@@ -122,9 +122,39 @@ export async function POST(request: NextRequest) {
         response.headers.set("Server-Timing", `interpret;dur=${interpretMs}, total;dur=${serverMs}`);
         return response;
       } catch (cause) {
-        console.error("Intérprete estructurado no disponible:", cause instanceof Error ? cause.name : "error");
+        // Registrar el tipo y estado de la falla SIN imprimir la clave,
+        // las transcripciones ni la información privada del usuario.
+        const apiError = cause && typeof cause === "object" ? cause as {
+          status?: unknown; code?: unknown; type?: unknown; name?: unknown; message?: unknown
+        } : {};
+        const status = typeof apiError.status === "number" ? apiError.status : null;
+        const code = typeof apiError.code === "string" ? apiError.code : null;
+        const errorName = typeof apiError.name === "string" ? apiError.name : "Error";
+        // El mensaje puede indicar qué parámetro rechazó OpenAI; se redactan
+        // valores con apariencia de token antes de imprimirlo en desarrollo.
+        const details = typeof apiError.message === "string"
+          ? apiError.message.slice(0, 450).replace(/sk-[A-Za-z0-9_-]+/g, "[CLAVE_OCULTA]")
+          : "";
+        console.error("[OrderVoice IA] Error interpretando pedido:", {
+          model: process.env.ORDERVOICE_INTENT_MODEL || "gpt-6.1-sol",
+          status, code, name: errorName, details
+        });
+        const explanation = status === 401
+          ? "La API rechazó tu clave (HTTP 401). Verifica OPENAI_API_KEY en .env.local."
+          : status === 403
+            ? "La clave API no tiene permiso para Responses (HTTP 403), o tu proyecto no tiene acceso al modelo. Activa Request para Responses (/v1/responses) en OpenAI Platform."
+            : status === 404
+              ? "El modelo de interpretación no está disponible para este proyecto (HTTP 404). Comprueba ORDERVOICE_INTENT_MODEL."
+              : status === 429
+                ? "Se alcanzó un límite de uso o créditos de OpenAI (HTTP 429). Revisa los límites y el saldo de la API."
+                : status === 400
+                  ? "OpenAI rechazó la configuración o el formato de la petición (HTTP 400). Revisa el detalle en la terminal de Next.js."
+                  : errorName === "APIConnectionTimeoutError" || errorName === "TimeoutError"
+                    ? "La IA tardó demasiado en responder. Revisa la conexión o usa un modelo más rápido."
+                    : "No se pudo interpretar el pedido. Revisa el detalle del error en la terminal de Next.js.";
         return NextResponse.json({
-          error: "La IA no pudo interpretar el pedido. No modifiqué tu carrito. Repite la frase o revisa tu conexión y la clave API."
+          error: explanation + " Tu carrito no se modificó.",
+          diagnostic: { status, code, name: errorName }
         }, { status: 502 });
       }
     }
