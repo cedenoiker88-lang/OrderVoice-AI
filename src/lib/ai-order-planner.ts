@@ -53,7 +53,7 @@ export async function understandOrderPlan(
     maxRetries: 0
   });
   const response = await client.responses.parse({
-    model: process.env.ORDERVOICE_INTENT_MODEL || "gpt-6.1-terra",
+    model: process.env.ORDERVOICE_INTENT_MODEL || "gpt-6.1-sol",
     reasoning: { effort: "low" },
     store: false,
     instructions: INSTRUCTIONS,
