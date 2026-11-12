@@ -35,3 +35,4 @@ jobs:
           npm run test:browser:voice
           npm run test:plan
           npm run test:handsfree
+          npm run test:voice:currency
