@@ -152,6 +152,9 @@ export default function Home() {
         if (event.data.size > 0) recordedChunksRef.current.push(event.data);
       };
       recorder.onerror = () => {
+        // No transcribir ni gastar créditos si MediaRecorder reporta un error.
+        recorder.onstop = null;
+        if (recorder.state === "recording") recorder.stop();
         closeMicrophoneCapture();
         setError("No pude grabar el audio. Comprueba el permiso de micrófono.");
       };
@@ -367,7 +370,11 @@ export default function Home() {
     recognitionRef.current?.stop();
     window.speechSynthesis?.cancel();
     if (recordingTimerRef.current) clearTimeout(recordingTimerRef.current);
-    mediaRecorderRef.current?.stop();
+    if (mediaRecorderRef.current) {
+      // Durante navegación o recarga se cancela, no se manda audio a la API.
+      mediaRecorderRef.current.onstop = null;
+      if (mediaRecorderRef.current.state === "recording") mediaRecorderRef.current.stop();
+    }
     mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
     sttAbortRef.current?.abort();
   }, []);
@@ -484,7 +491,7 @@ export default function Home() {
 
       <main className="dashboard">
         <section className="panel chat-panel" aria-label="Asistente de pedidos">
-          <div className="panel-heading"><div><h2>Asistente de pedidos</h2><p>Chat de simulación · Sin llamadas reales</p></div><button className="secondary reset" onClick={reset} disabled={busy}>↻ Reiniciar</button></div>
+          <div className="panel-heading"><div><h2>Asistente de pedidos</h2><p>Chat de simulación · Sin llamadas reales</p></div><button className="secondary reset" onClick={reset} disabled={busy || recording || transcribing}>↻ Reiniciar</button></div>
           <div className="conversation" ref={conversationRef} role="log" aria-live="polite">
             {messages.map((message, index) => <div className={`message ${message.role}`} key={index}><span className="message-avatar">{message.role === "assistant" ? "✦" : "TÚ"}</span><div className="message-body"><span className="speaker">{message.role === "assistant" ? "OrderVoice" : "Cliente"}</span><p>{message.text}</p></div></div>)}
             {busy && <div className="thinking">OrderVoice está procesando tu pedido…</div>}
