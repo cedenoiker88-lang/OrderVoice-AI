@@ -422,6 +422,8 @@ export default function Home() {
     handsFreeRef.current = session;
     setHandsFreeActive(true);
     setLastTranscript("");
+    setReviewReady(false);
+    setInput("");
     setError("");
     void session.start();
   }
