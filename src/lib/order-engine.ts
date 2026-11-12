@@ -104,7 +104,7 @@ export function guardDestructiveIntent(message: string, command: Command): Comma
   const negated = /\b(no|nunca|jamas)\b/.test(text);
   const hypothetical = /[¿?]/.test(message) || /\b(que pasa si|cuando|como puedo|deberia)\b/.test(text);
   if (command.action === "confirm") {
-    const explicit = /\b(confirmo|confirmar|confirmado|finalizar|hacer el pedido|realizar el pedido)\b/.test(text);
+    const explicit = /\b(confirmo|confirma|confirmame|confirmar|confirmado|finalizar|hacer el pedido|realizar el pedido)\b/.test(text);
     if (negated || hypothetical || !explicit) {
       return noChange("No confirmé el pedido. Cuando estés listo, di: Confirmo el pedido.");
     }
