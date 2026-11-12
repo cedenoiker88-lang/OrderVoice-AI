@@ -13,6 +13,7 @@
     "test:fast": "node scripts/test-fast-intents.cjs",
     "test:browser:voice": "node scripts/test-browser-voice.cjs",
     "test:plan": "node scripts/test-order-plan.cjs",
+    "test:handsfree": "node scripts/test-handsfree-vad.cjs",
     "test:intelligence:live": "node scripts/test-order-ai-live.cjs",
     "diagnose:intelligence": "node --env-file=.env.local scripts/diagnose-intelligence.cjs",
     "test:phone": "node scripts/test-twilio-webhook.cjs",
