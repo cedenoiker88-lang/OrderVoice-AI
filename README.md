@@ -1,3 +1,6 @@
+> 🎙 **Nuevo modo de voz continua (experimental v1.0):** pulsa una sola vez **Iniciar conversación continua** en Microsoft Edge. La aplicación detecta turnos hablados, transcribe con OpenAI, interpreta pedidos con la IA y responde por voz antes de escuchar el siguiente turno. No usa Twilio.  
+> [**Ver guía paso a paso y limitaciones**](docs/CONVERSACION_CONTINUA_EDGE_V10.md) · Rama `dev/handsfree-browser-v1.0`.
+>
 # OrderVoice AI — Starter v0.1
 
 > **¿Vas a instalar OrderVoice AI en Windows o en una computadora del laboratorio?** Sigue la **[Guía de instalación paso a paso para v0.6](docs/GUIA_INSTALACION_WINDOWS.md)**: programas que debes descargar, instalación con `npm.cmd`, modo demostración sin claves y opciones de Ollama y telefonía.
