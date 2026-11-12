@@ -123,6 +123,20 @@ const confirmed=applyOrderPlan(cart,plan("confirm"),"Sí, confirmo el pedido");
 assert.equal(confirmed.confirmed,true);
 assert.deepEqual(confirmed.cart,cart);checks+=1;
 
+// 5. Las rectificaciones "No, ..." no son lo mismo que "No quiero ...".
+expectCart([{productId:"pepperoni-familiar",quantity:1}],plan("edit",[
+  op("replace","pepperoni-familiar",1,"hawaiana-mediana")
+]),"No, mejor cámbiala por una hawaiana mediana",[
+  {productId:"hawaiana-mediana",quantity:1}
+]);
+unchanged(plan("edit",[op("replace","pepperoni-familiar",1,"hawaiana-mediana")]),
+  "No quiero que cambies la pizza por una hawaiana mediana");
+unchanged(plan("edit",[op("remove","pepperoni-familiar",1)]),
+  "No quiero eliminar la pepperoni familiar");
+unchanged(plan("edit",[op("add","gaseosa",1)]),
+  "No me agregues una gaseosa");
+unchanged(plan("confirm"),"No confirmo el pedido");
+
 // 5. No confiar en cantidades/IDs fabricados por la IA.
 unchanged(plan("edit",[op("set","gaseosa",21)]),"Quiero veintiuna gaseosas");
 unchanged(plan("edit",[op("set","gaseosa",-1)]),"Quiero menos uno");
