@@ -84,11 +84,11 @@ export function applyOrderPlan(cart: CartItem[], plan: OrderPlan, originalMessag
       plan.operations.some((op) => ["remove", "keep_only"].includes(op.kind))) {
     return invalid("La frase contiene una negación sobre eliminar productos. ¿Qué deseas conservar o quitar?");
   }
-  if (/(?:\bno quiero\b|\bno me\b|\bno vayas a\b|\bno debes\b)[^.?!]*\b(?:agregar|agrega|anadir|anade|poner|pongas)\b/.test(normalized) &&
+  if (/(?:\bno quiero\b|\bno me\b|\bno vayas a\b|\bno debes\b)[^.?!]*\b(?:agregar|agrega|agregues|anadir|anade|anadas|poner|pongas)\b/.test(normalized) &&
       plan.operations.some((op) => op.kind === "add")) {
     return invalid("La frase contiene una negación sobre agregar productos. ¿Qué deseas añadir realmente?");
   }
-  if (/(?:\bno quiero\b|\bno\b)[^.?!]*\b(?:cambiar|cambia|cambies|reemplazar|reemplaza|sustituir|sustituye)\b/.test(normalized) &&
+  if (/\bno\s+(?:(?:quiero|deseo)\s+(?:que\s+)?|(?:me|la|lo|las|los)\s+|vayas\s+a\s+)?(?:cambiar|cambia|cambies|reemplac\w*|reemplaz\w*|sustituy\w*|sustituir)\b/.test(normalized) &&
       plan.operations.some((op) => op.kind === "replace")) {
     return invalid("No aplicaré el reemplazo porque la frase lo niega o es ambigua.");
   }
