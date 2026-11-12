@@ -34,7 +34,8 @@ assert.equal(fastUnderstand("Confirmo el pedido").action, "confirm");
 assert.equal(fastUnderstand("No confirmo el pedido"), null);
 assert.equal(fastUnderstand("Vacía el carrito").action, "clear");
 assert.equal(fastUnderstand("No vacíes el carrito"), null);
-assert.equal(fastUnderstand("¿Cuánto cuesta la hawaiana familiar?"), null);
+assert.equal(fastUnderstand("¿Cuánto cuesta la hawaiana familiar?").action, "question");
+assert.match(fastUnderstand("¿Cuánto cuesta la hawaiana familiar?").answer, /15,00|15\.00/);
 assert.equal(fastUnderstand("Quiero una gaseosa y una pizza"), null);
 assert.equal(fastUnderstand("Quiero una pizza de pepperoni"), null);
 
