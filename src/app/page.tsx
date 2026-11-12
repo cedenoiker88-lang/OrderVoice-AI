@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { MENU, calculateTotal, formatUSD, productById, type CartItem, type ConfirmedOrder } from "@/lib/menu";
 import type { PendingPizza } from "@/lib/pizza-dialogue";
+import { prepareSpanishCurrencySpeech } from "@/lib/spanish-currency-speech";
 import { BrowserHandsFreeSession, type HandsFreePhase } from "@/lib/browser-handsfree";
 
 type ChatMessage = { role: "assistant" | "user"; text: string };
@@ -312,7 +313,7 @@ export default function Home() {
     if ((!speakReplies && !resume) || !window.speechSynthesis) return;
     window.speechSynthesis.cancel();
     const generation = generationRef.current;
-    const utterance = new SpeechSynthesisUtterance(text);
+    const utterance = new SpeechSynthesisUtterance(prepareSpanishCurrencySpeech(text));
     // Elegir una voz española explícita: lang por sí solo puede usar la voz inglesa predeterminada.
     // Se actualiza cuando Edge termina de cargar las voces instaladas.
     // Mantener una misma voz entre turnos evita cambios accidentales de timbre.
