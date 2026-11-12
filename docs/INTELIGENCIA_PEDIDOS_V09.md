@@ -147,3 +147,25 @@ Cuando falla un caso, envía el texto de la prueba y la respuesta (nunca la clav
 - Los tests automatizados locales verifican invariantes del código, pero las métricas reales de precisión deben evaluarse con el micrófono y los escenarios de la exposición.
 
 Documentación oficial de modelos y salida estructurada: https://developers.openai.com/api/docs/guides/structured-outputs
+
+## 8. Si la transcripción funciona pero sale "La IA no pudo interpretar el pedido"
+
+La grabación y el reconocimiento de voz son correctos; el error pertenece al endpoint **Responses** que interpreta el texto, por ejemplo por permisos de la clave, falta de acceso al modelo, límite de créditos, validación del esquema o tiempo de espera.
+
+La rama v0.9 incluye mensajes específicos según el HTTP devuelto, y un diagnóstico seguro de una sola consulta. Desde la carpeta con `package.json`, ejecuta:
+
+```powershell
+npm.cmd run diagnose:intelligence
+```
+
+Esto **sí consume una única consulta pequeña de texto** a OpenAI (no llama a Twilio ni transcribe audio). El comando lee tu archivo privado `.env.local` y muestra **solo** el estado del acceso a Responses y el esquema, sin imprimir la clave ni el audio.
+
+- **HTTP 403:** revisa OpenAI Platform → API keys → tu clave restringida → *Model capabilities* → **Responses (/v1/responses): Request**. Comprueba también acceso al modelo del proyecto.
+- **HTTP 401:** comprueba que `OPENAI_API_KEY` sea válida y pertenezca al proyecto correcto.
+- **HTTP 404:** comprueba el nombre del modelo en `ORDERVOICE_INTENT_MODEL` y su disponibilidad.
+- **HTTP 429:** revisa el saldo, límites o cuota de tu proyecto OpenAI API.
+- **HTTP 400:** captura el detalle del parámetro inválido que aparece en la terminal; se deberá corregir el esquema o la petición.
+- **Timeout/error de certificado:** revisa conexión, antivirus/proxy o el certificado del sistema de Windows.
+
+No cambies la configuración de Twilio por un error de interpretación en el navegador. Tras corregir la causa, reinicia Next.js y prueba con un pedido simple escrito antes de repetir la grabación.
+
