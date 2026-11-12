@@ -1,4 +1,4 @@
-import { MENU } from "./menu";
+import { MENU, formatUSD } from "./menu";
 import type { Command } from "./order-engine";
 
 // Respuestas frecuentes y inequívocas sin esperar a un modelo de lenguaje.
@@ -25,6 +25,25 @@ export function fastUnderstand(message: string): Command | null {
 
   if (/^(?:cuanto (?:es|cuesta|sale|llevo|debo|pago|tengo que pagar)(?: (?:en total|el total|todo|el pedido|mi pedido|la cuenta))?|cuanto seria(?: en total)?|cuanto voy a pagar|cuanto es la cuenta|cuanto va la cuenta|en cuanto va (?:la cuenta|el pedido)|cual es (?:el )?total(?: del pedido)?|dime (?:el )?total|me dices (?:el )?total|me puedes decir (?:el )?total|total(?: del pedido)?|precio total)$/.test(text)) {
     return command("total");
+  }
+
+  // Una pregunta por el precio o disponibilidad NO debe añadir productos al carrito.
+  const price = text.match(/^(?:cuanto (?:cuesta|vale|sale)|que precio tiene|precio de|en cuanto esta|a como esta) (?:la |una |el )?(?:pizza )?(?:de )?(pepperoni|hawaiana|margarita|gaseosa)(?: (mediana|familiar))?$/);
+  if (price) {
+    const [, flavor, size] = price;
+    if (flavor !== "gaseosa" && !size) {
+      return command("question", [], `Tenemos pizza ${flavor} mediana y familiar. ¿De qué tamaño deseas saber el precio?`);
+    }
+    const product = MENU.find((item) => item.id === (flavor === "gaseosa" ? "gaseosa" : `${flavor}-${size}`));
+    return command("question", [], product
+      ? `${product.name} cuesta ${formatUSD(product.priceCents)}. ¿Deseas pedirla?`
+      : "No encontré ese producto en nuestro menú.");
+  }
+  if (/^(?:tienen|hay|venden|ofrecen) (?:la |una |el )?(?:pizza )?(?:de )?(pepperoni|hawaiana|margarita|gaseosa)(?: (mediana|familiar))?$/.test(text)) {
+    return command("question", [], "Sí, ese producto está en el menú de demostración. ¿Qué cantidad deseas pedir?");
+  }
+  if (/^(?:que (?:lleva|trae|ingredientes tiene|tiene)|cuales son los ingredientes de) (?:la |una |el )?(?:pizza )?(?:de )?(pepperoni|hawaiana|margarita)(?: (mediana|familiar))?$/.test(text)) {
+    return command("question", [], "Tengo disponibles los sabores y precios del menú, pero los ingredientes exactos aún no están registrados. ¿Qué deseas pedir?");
   }
 
   // La confirmación solo se reconoce como orden inequívoca, nunca con "¿...?".
