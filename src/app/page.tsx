@@ -60,6 +60,7 @@ export default function Home() {
   const [transcribing, setTranscribing] = useState(false);
   const [lastTranscript, setLastTranscript] = useState("");
   const [reviewTranscript, setReviewTranscript] = useState(false);
+  const [reviewReady, setReviewReady] = useState(false);
 
   const [error, setError] = useState("");
   const conversationRef = useRef<HTMLDivElement>(null);
@@ -176,6 +177,7 @@ export default function Home() {
           const data = await result.json() as { text?: string; error?: string };
           if (!result.ok || !data.text) throw new Error(data.error ?? "No se pudo reconocer tu voz.");
           const transcript = data.text.trim();
+          setReviewReady(false);
           setLastTranscript(transcript);
           // Se conserva el texto leído por la API en el historial y se envía
           // al motor de pedidos. La respuesta se lee con la voz de Edge.
@@ -184,6 +186,7 @@ export default function Home() {
           if (reviewTranscript) {
             // Permite corregir una palabra mal reconocida antes de modificar el carrito.
             setInput(transcript);
+            setReviewReady(true);
             setError("Revisa el texto transcrito. Si está bien, pulsa Enviar.");
           } else {
             await send(transcript, true, true);
@@ -463,6 +466,7 @@ export default function Home() {
     setLastTiming(null);
     setLastVoiceDelayMs(null);
     setLastTranscript("");
+    setReviewReady(false);
     setLastRecognitionMs(null);
     setLastSpeechToTextMs(null);
     setError("");
@@ -528,7 +532,7 @@ export default function Home() {
             {lastVoiceDelayMs !== null && <span>Texto → inicio de voz: <strong>{lastVoiceDelayMs} ms</strong></span>}
           </div>}
           {error && <p className="error" role="alert">⚠ {error}</p>}
-          <form className="composer" onSubmit={(event) => {event.preventDefault(); void send(input);}}>
+          <form className="composer" onSubmit={(event) => {event.preventDefault(); const fromReview = reviewReady; setReviewReady(false); void send(input, fromReview, fromReview);}}>
             <button className={`mic ${listening ? "active" : ""}`} type="button" aria-label="Dictar pedido" title="Hablar con el micrófono" disabled={busy || voiceSession || recording || transcribing} onClick={startMicrophone}>{listening ? "◉" : "🎙"}</button>
             <input aria-label="Escribe el pedido" placeholder="Ej.: dos pepperoni familiares y una hawaiana mediana" maxLength={500} value={input} onChange={(event) => setInput(event.target.value)} disabled={busy}/>
             <button className="send" type="submit" disabled={busy || !input.trim()}>Enviar <span>➜</span></button>
