@@ -45,6 +45,21 @@ export async function POST(request: NextRequest) {
   try {
     const body: unknown = await request.json();
     if (!body || typeof body !== "object") return NextResponse.json({ error: "Solicitud inválida" }, { status: 400 });
+    // Evitar que una URL ngrok pública consuma créditos mediante /api/chat.
+    // Las llamadas Twilio legítimas invocan esta ruta internamente desde localhost.
+    if (process.env.ORDERVOICE_PROVIDER === "openai") {
+      const local = (host: string) => ["localhost", "127.0.0.1", "[::1]"].includes(host);
+      const hostname = new URL(request.url).hostname;
+      const forwarded = request.headers.get("x-forwarded-host")?.split(",")[0]?.trim();
+      let forwardedHostname: string | null = null;
+      if (forwarded) {
+        try { forwardedHostname = new URL("http://" + forwarded).hostname; }
+        catch { return NextResponse.json({ error: "Encabezado Host inválido." }, { status: 403 }); }
+      }
+      if (!local(hostname) || (forwardedHostname && !local(forwardedHostname))) {
+        return NextResponse.json({ error: "El motor OpenAI de pruebas solo funciona en localhost." }, { status: 403 });
+      }
+    }
     const raw = body as Record<string, unknown>;
     const message = typeof raw.message === "string" ? raw.message.trim() : "";
     if (!message || message.length > 500) return NextResponse.json({ error: "El mensaje debe tener entre 1 y 500 caracteres" }, { status: 400 });
