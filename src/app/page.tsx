@@ -59,6 +59,7 @@ export default function Home() {
   const [recording, setRecording] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
   const [lastTranscript, setLastTranscript] = useState("");
+  const [reviewTranscript, setReviewTranscript] = useState(false);
 
   const [error, setError] = useState("");
   const conversationRef = useRef<HTMLDivElement>(null);
@@ -180,7 +181,13 @@ export default function Home() {
           // al motor de pedidos. La respuesta se lee con la voz de Edge.
           setTranscribing(false);
           if (sttAbortRef.current === controller) sttAbortRef.current = null;
-          await send(transcript, true, true);
+          if (reviewTranscript) {
+            // Permite corregir una palabra mal reconocida antes de modificar el carrito.
+            setInput(transcript);
+            setError("Revisa el texto transcrito. Si está bien, pulsa Enviar.");
+          } else {
+            await send(transcript, true, true);
+          }
         } catch (cause) {
           if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : "Fallo de transcripción.");
         } finally {
@@ -492,6 +499,13 @@ export default function Home() {
             <span role="status">{transcribing ? "Transcribiendo el audio mediante API…" :
               recording ? "Grabando… habla ahora. Máximo 18 segundos." :
               "Opcional: cada transcripción consume créditos OpenAI. No usa Twilio."}</span>
+          </div>
+          <div className="stt-review">
+            <label><input type="checkbox" checked={reviewTranscript}
+              onChange={(event) => setReviewTranscript(event.target.checked)}
+              disabled={recording || transcribing}/>
+              Revisar y corregir el texto antes de enviarlo al motor
+            </label>
           </div>
           {lastTranscript && <div className="stt-result" role="status">
             <strong>Texto reconocido por la API:</strong> {lastTranscript}
