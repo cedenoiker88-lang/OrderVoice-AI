@@ -54,6 +54,8 @@ export default function Home() {
   const [listening, setListening] = useState(false);
   const [speakReplies, setSpeakReplies] = useState(false);
   const [voiceSession, setVoiceSession] = useState(false);
+  const [spanishVoices, setSpanishVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [selectedVoice, setSelectedVoice] = useState("");
   const [error, setError] = useState("");
   const conversationRef = useRef<HTMLDivElement>(null);
   const busyRef = useRef(false);
@@ -67,6 +69,7 @@ export default function Home() {
   const generationRef = useRef(0);
   const retryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const voiceTurnStartedRef = useRef<number | null>(null);
+  const silenceCountRef = useRef(0);
 
   useEffect(() => {
     try {
@@ -78,6 +81,17 @@ export default function Home() {
     } catch { /* datos locales inválidos: no bloquea la demo */ }
   }, []);
   useEffect(() => {
+    const synthesis = window.speechSynthesis;
+    if (!synthesis) return;
+    const refreshVoices = () => {
+      setSpanishVoices(synthesis.getVoices().filter((voice) => /^es(?:-|$)/i.test(voice.lang)));
+    };
+    refreshVoices();
+    synthesis.addEventListener("voiceschanged", refreshVoices);
+    return () => synthesis.removeEventListener("voiceschanged", refreshVoices);
+  }, []);
+
+  useEffect(() => {
     // Desplazar solo el historial del chat, nunca toda la página del navegador.
     const conversation = conversationRef.current;
     if (!conversation) return;
@@ -88,6 +102,7 @@ export default function Home() {
   function stopVoiceSession() {
     generationRef.current += 1;
     voiceTurnStartedRef.current = null;
+    silenceCountRef.current = 0;
     voiceRef.current = false;
     setVoiceSession(false);
     setListening(false);
@@ -128,6 +143,7 @@ export default function Home() {
         const phrase = event.results[0]?.[0]?.transcript?.trim();
         if (!phrase) return;
         heard = true;
+        silenceCountRef.current = 0;
         const transcriptAt = performance.now();
         setLastRecognitionMs(startedSpeakingAt === null ? null : Math.round(transcriptAt - startedSpeakingAt));
         setLastSpeechToTextMs(finishedSpeakingAt === null ? null : Math.round(transcriptAt - finishedSpeakingAt));
@@ -135,7 +151,7 @@ export default function Home() {
         setLastVoiceDelayMs(null);
         setListening(false);
         recognition.stop();
-        void send(phrase);
+        void send(phrase, true);
       };
       recognition.onerror = (event) => {
         if (generation !== generationRef.current || !voiceRef.current) return;
@@ -150,7 +166,16 @@ export default function Home() {
         if (recognitionRef.current === recognition) recognitionRef.current = null;
         setListening(false);
         if (!heard && voiceRef.current && generation === generationRef.current) {
-          retryRef.current = setTimeout(() => listen(generation), 400);
+          silenceCountRef.current += 1;
+          if (silenceCountRef.current >= 5) {
+            stopVoiceSession();
+            setError("No detecté voz después de varios intentos. Comprueba el micrófono y reinicia la conversación.");
+          } else if (silenceCountRef.current % 2 === 0) {
+            // Pedir repetir sin añadir un pedido vacío ni reiniciar la sesión.
+            retryRef.current = setTimeout(() => say("No te escuché bien. ¿Puedes repetir tu pedido?", true), 350);
+          } else {
+            retryRef.current = setTimeout(() => listen(generation), 500);
+          }
         }
       };
       setListening(true);
@@ -167,11 +192,14 @@ export default function Home() {
     const generation = generationRef.current;
     const utterance = new SpeechSynthesisUtterance(text);
     // Elegir una voz española explícita: lang por sí solo puede usar la voz inglesa predeterminada.
-    const spanishVoices = window.speechSynthesis.getVoices()
+    // Se actualiza cuando Edge termina de cargar las voces instaladas.
+    // Mantener una misma voz entre turnos evita cambios accidentales de timbre.
+    const available = spanishVoices.length ? spanishVoices : window.speechSynthesis.getVoices()
       .filter((voice) => /^es(?:-|$)/i.test(voice.lang));
-    const preferredVoice = spanishVoices.find((voice) => /^es-EC$/i.test(voice.lang))
-      ?? spanishVoices.find((voice) => /^es-(MX|CO|ES)$/i.test(voice.lang))
-      ?? spanishVoices[0];
+    const preferredVoice = available.find((voice) => voice.voiceURI === selectedVoice)
+      ?? available.find((voice) => /^es-EC$/i.test(voice.lang))
+      ?? available.find((voice) => /^es-(MX|CO|ES)$/i.test(voice.lang))
+      ?? available[0];
     if (preferredVoice) {
       utterance.voice = preferredVoice;
       utterance.lang = preferredVoice.lang;
@@ -180,7 +208,9 @@ export default function Home() {
       utterance.lang = "es-ES";
       setError("No encontré una voz española instalada. Windows podría leer el texto con acento inglés. Instala una voz de español en Configuración > Hora e idioma > Voz.");
     }
-    utterance.rate = 1;
+    utterance.rate = 0.97;
+    utterance.pitch = 1;
+    utterance.volume = 1;
     if (resume) {
       utterance.onstart = () => {
         if (voiceRef.current && generation === generationRef.current && voiceTurnStartedRef.current !== null) {
@@ -212,6 +242,7 @@ export default function Home() {
     }
     if (busyRef.current) return;
     generationRef.current += 1;
+    silenceCountRef.current = 0;
     voiceRef.current = true;
     setVoiceSession(true);
     setError("");
@@ -226,7 +257,7 @@ export default function Home() {
     window.speechSynthesis?.cancel();
   }, []);
 
-  async function send(text: string) {
+  async function send(text: string, browserVoice = false) {
     const message = text.trim();
     if (!message || busyRef.current) return;
     busyRef.current = true;
@@ -244,6 +275,7 @@ export default function Home() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           message,
+          browserVoice,
           cart: cartRef.current,
           pending: pendingRef.current,
           history: previousMessages.slice(-8)
@@ -296,7 +328,7 @@ export default function Home() {
       recognition.lang = "es-EC";
       recognition.interimResults = false;
       recognition.continuous = false;
-      recognition.onresult = (event) => { const phrase = event.results[0]?.[0]?.transcript; if (phrase) void send(phrase); };
+      recognition.onresult = (event) => { const phrase = event.results[0]?.[0]?.transcript; if (phrase) void send(phrase, true); };
       recognition.onerror = (event) => { setError(event.error === "network" ? "Reconocimiento por voz no disponible por red en este navegador. Prueba Chrome o Edge." : `Micrófono: ${event.error}. Verifica permisos y conexión.`); setListening(false); };
       recognition.onend = () => setListening(false);
       setError("");
@@ -327,7 +359,7 @@ export default function Home() {
   return (
     <div className="shell">
       <header className="header">
-        <div className="brand"><div className="brandmark">◉</div><div><strong>OrderVoice <span>AI</span></strong><small>Panel de pruebas · v0.5</small></div></div>
+        <div className="brand"><div className="brandmark">◉</div><div><strong>OrderVoice <span>AI</span></strong><small>Panel de pruebas · v0.7 voz navegador</small></div></div>
         <div className="header-right"><span className="status-dot" /><span>Servidor de desarrollo</span><span className={`mode mode-${mode}`}>{mode === "ollama" ? "OLLAMA LOCAL" : mode === "ia" ? "IA ACTIVADA" : mode === "local" ? "REGLAS LOCALES" : mode === "demo" ? "MODO DEMO" : "MODO POR DETECTAR"}</span></div>
       </header>
 
@@ -346,6 +378,14 @@ export default function Home() {
             </button>
             <span role="status">{voiceSession ? (listening ? "Escuchando al cliente…" : busy ? "Procesando el pedido…" : "OrderVoice está hablando o preparando la escucha…") : "Inicio manual de conversación"}</span>
           </div>
+          {spanishVoices.length > 0 && <div className="voice-settings">
+            <label htmlFor="voice-choice">Voz española de Edge:</label>
+            <select id="voice-choice" value={selectedVoice} onChange={(event) => setSelectedVoice(event.target.value)}
+              disabled={voiceSession} aria-label="Seleccionar voz en español">
+              <option value="">Automática (español)</option>
+              {spanishVoices.map((voice) => <option value={voice.voiceURI} key={voice.voiceURI}>{voice.name} ({voice.lang})</option>)}
+            </select>
+          </div>}
           {lastTiming && <div className="performance" aria-label="Medición de velocidad de la última respuesta">
             <span>⏱ Respuesta: <strong>{lastTiming.requestMs} ms</strong></span>
             <span>Motor: <strong>{lastTiming.mode === "local" ? "Reglas locales" : lastTiming.mode === "ollama" ? "Ollama" : lastTiming.mode === "ia" ? "IA externa" : "Demo"}</strong></span>
