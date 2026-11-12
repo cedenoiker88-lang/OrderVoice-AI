@@ -42,7 +42,7 @@ Edita **`.env.local`** (no `.env.local.example`) y verifica que cada variable es
 ```dotenv
 # Activa interpretación de varias operaciones mediante OpenAI
 ORDERVOICE_PROVIDER=openai
-ORDERVOICE_INTENT_MODEL=gpt-6.1-terra
+ORDERVOICE_INTENT_MODEL=gpt-6.1-sol
 
 # Transcripción de audio del navegador mediante OpenAI
 ORDERVOICE_BROWSER_STT_PROVIDER=openai
@@ -57,7 +57,7 @@ Para esta prueba del navegador el gasto de API proviene de dos pasos: transcripc
 
 **Permisos de la clave:** en OpenAI Platform, comprueba que el proyecto y la clave puedan usar *Responses* y *Audio transcriptions*. Una clave restringida solo a *Text-to-speech* puede transcribir o sintetizar según sus permisos, pero no interpretar pedidos mediante Responses.
 
-**Modelo:** `gpt-6.1-terra` busca equilibrar rapidez y calidad. Si detectamos errores semánticos complejos, prueba `ORDERVOICE_INTENT_MODEL=gpt-6.1-sol` (puede tardar más y costar más).
+**Modelo recomendado para la exposición:** `gpt-6.1-sol` prioriza comprensión de instrucciones complejas. Si en las pruebas tarda demasiado, cambia a `ORDERVOICE_INTENT_MODEL=gpt-6.1-terra` para priorizar velocidad y costo.
 
 La voz sigue siendo la de Microsoft Edge. El costo de TTS por OpenAI en el navegador **no está activado** en esta rama.
 
