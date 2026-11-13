@@ -245,10 +245,16 @@ export class BrowserHandsFreeSession {
       this.resolveSpeech = () => done();
       this.rejectSpeech = (error) => done(error);
       utterance.onend = () => done();
-      utterance.onerror = () => done(new Error("Edge no pudo reproducir la voz española."));
+      utterance.onerror = (event) => {
+        const reason = event.error || "desconocido";
+        done(new Error(`Edge no pudo reproducir la voz española (código: ${reason}). Prueba otra voz española en el selector o reinicia Edge.`));
+      };
       // Evita un bloqueo infinito cuando Edge no emite el evento onend.
       this.speechWatchdog = setTimeout(() => done(new Error("La voz de Edge dejó de responder.")), 25_000);
-      window.speechSynthesis.cancel();
+      // No llamar a cancel() inmediatamente antes de speak(): Edge puede
+      // interpretar esa cancelación como interrupción del nuevo saludo.
+      // Los turnos son secuenciales, y stop() ya cancela al finalizar.
+      window.speechSynthesis.resume();
       window.speechSynthesis.speak(utterance);
     });
   }
