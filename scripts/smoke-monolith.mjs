@@ -1,5 +1,6 @@
 /** Verificación HTTP real: requiere Next.js levantado y PostgreSQL ya migrado. */
 import assert from "node:assert/strict";
+import pg from "pg";
 const origin="http://localhost:3000";
 async function request(method,path,body) {
   const result=await fetch(origin+path,{method,headers:body===undefined?{}:{"Content-Type":"application/json"},
@@ -57,6 +58,29 @@ assert.equal(r.status,200);assert.equal(r.data.sesion.totalCents,350);
 r=await request("POST",`/api/sesiones/${directSession.data.sesion.id}/items`,{productId:newId,quantity:0});
 assert.equal(r.status,422);
 
+// El producto "Agua de prueba" es temporal: no debe quedar en el menú real.
+// Limpiamos SOLO el producto y la sesión creados por ESTA ejecución.
+// No eliminamos pedidos confirmados ni productos ajenos a la prueba.
+const cleanup = new pg.Client({connectionString:process.env.DATABASE_URL});
+await cleanup.connect();
+try {
+  await cleanup.query("BEGIN");
+  await cleanup.query("DELETE FROM sesion_items WHERE sesion_id=$1 AND producto_id=$2",
+    [directSession.data.sesion.id,newId]);
+  await cleanup.query("DELETE FROM sesiones WHERE id=$1 AND estado='abierta'",
+    [directSession.data.sesion.id]);
+  const cleaned = await cleanup.query(
+    "DELETE FROM productos WHERE id=$1 AND nombre='Agua de prueba' AND NOT EXISTS (SELECT 1 FROM pedido_items WHERE producto_id=$1)",
+    [newId]);
+  assert.equal(cleaned.rowCount,1,"El producto temporal debe eliminarse al terminar su prueba");
+  await cleanup.query("COMMIT");
+} catch (error) {
+  await cleanup.query("ROLLBACK").catch(()=>{});
+  throw error;
+} finally {
+  await cleanup.end();
+}
+
 // Comprueba también el endpoint que usa la interfaz web: interpretación LOCAL.
 // Con la transcripción desactivada, ningún paso realiza llamadas a OpenAI.
 const chatSession=await request("POST","/api/sesiones",{});
@@ -73,6 +97,12 @@ assert.equal(b.data.sesion.totalCents,1000);
 r=await request("POST","/api/chat",{sessionId:chatId,message:"¿Cuánto es el total?"});
 assert.equal(r.status,200);
 assert.equal(r.data.cart[0].productId,"hawaiana-mediana");
+// Cierre conversacional sin volver a mostrar el menú y sin confirmar por accidente.
+r=await request("POST","/api/chat",{sessionId:chatId,message:"No, con eso estaría todo",browserVoice:true});
+assert.equal(r.status,200);
+assert.match(r.data.reply,/confirmo mi pedido/i);
+assert.equal(r.data.cart[0].productId,"hawaiana-mediana");
+assert.equal(r.data.order,undefined);
 r=await request("POST","/api/chat",{sessionId:chatId,message:"Confirmo mi pedido"});
 assert.equal(r.status,200);assert.ok(r.data.order?.id);
 assert.equal(r.data.order.totalCents,1000);
