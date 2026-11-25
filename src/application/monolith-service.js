@@ -106,6 +106,37 @@ export function createMonolithService(repository) {
         return tx.getSession();
       });
     },
+    /** Sincroniza en UNA transacción el carrito que determinó nuestro parser local.
+     * No expone operaciones de IA ni recibe precios del navegador. */
+    async syncCart(sessionId, proposed) {
+      requireUUID(sessionId);
+      if (!Array.isArray(proposed) || proposed.length>30) {
+        throw new DomainError(422,"CARRITO_INVALIDO","Lista de productos inválida.");
+      }
+      const ids=new Set();
+      for(const line of proposed) {
+        requireObject(line);
+        requireId(line.productId,"productId");
+        requireQuantity(line.quantity);
+        if(ids.has(line.productId))throw new DomainError(422,"PRODUCTO_DUPLICADO","Un producto aparece dos veces.");
+        ids.add(line.productId);
+      }
+      return repository.withSession(sessionId, async(tx)=>{
+        ensureOpen(tx.session);
+        const current=await tx.getItems();
+        const previous=new Map(current.map(item=>[item.productId,item.quantity]));
+        for(const line of proposed) {
+          if(line.quantity>(previous.get(line.productId)??0)) {
+            ensureProduct(await tx.getProduct(line.productId));
+          }
+        }
+        for(const old of current) {
+          if(!ids.has(old.productId))await tx.setQuantity(old.productId,0);
+        }
+        for(const line of proposed)await tx.setQuantity(line.productId,line.quantity);
+        return tx.getSession();
+      });
+    },
     async confirmSession(sessionId, raw) {
       requireUUID(sessionId);
       const body = requireObject(raw);
