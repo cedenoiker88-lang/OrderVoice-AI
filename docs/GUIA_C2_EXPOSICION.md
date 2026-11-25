@@ -23,7 +23,7 @@ git switch -c dev/criterio2-monolito --track origin/dev/criterio2-monolito
 npm.cmd install
 ```
 
-**Importante:** usa `npm.cmd install` (no `npm ci`) la primera vez, porque se añadió el driver propio de conexión PostgreSQL `pg` y deberá actualizarse el lock local.
+**Importante:** instala las dependencias y verifica que Next.js utilice al menos la versión 16.4.6, como indica `package.json`. Nunca subas el archivo `.env.local`.
 
 ## 3. Configurar la conexión
 
@@ -50,9 +50,7 @@ Resultado esperado: mensaje `OK: PostgreSQL preparado...`. Si falla con `ECONNRE
 ## 4. Pruebas automatizadas
 
 ```powershell
-npm.cmd run typecheck
-npm.cmd run test:monolith
-npm.cmd run test:plan
+npm.cmd test
 ```
 
 `test:monolith` usa repositorio doble en memoria y no consume APIs. Comprueba CU-01..CU-04, error por carrito vacío, producto inválido, cantidades fuera de rango, reemplazo imposible, límites y doble confirmación. **Deja la terminal con resultados visibles y toma una captura real.**
