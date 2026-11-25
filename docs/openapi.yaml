@@ -1,0 +1,423 @@
+openapi: 3.0.3
+info:
+  title: OrderVoice AI - API propia del monolito
+  version: 2.0.0-criterio2
+  description: |
+    API REST desarrollada en Next.js y PostgreSQL local. Flujos CU-01 a CU-04
+    del Criterio 1: agregar, cambiar, consultar total y confirmar. Los precios
+    se verifican en servidor y los pedidos se guardan transaccionalmente.
+    OpenAI solo se utiliza para voz a texto en /api/browser-transcribe (fuera
+    de este contrato de negocio). No hay pagos ni pedidos a una cocina real.
+    Por seguridad, endpoints académicos habilitados únicamente en localhost.
+servers:
+  - url: http://localhost:3000
+tags:
+  - name: Sistema
+  - name: Productos
+  - name: Clientes
+  - name: Sesiones
+  - name: Pedidos
+paths:
+  /api/salud:
+    get:
+      tags: [Sistema]
+      summary: Comprueba que el servidor y PostgreSQL respondan
+      responses:
+        '200':
+          description: Servicio saludable
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: {type: string, example: ok}
+                  monolito: {type: string, example: OrderVoice AI Criterio 2}
+                  database: {type: string, example: postgresql}
+                  productos: {type: integer, example: 7}
+        '503': {$ref: '#/components/responses/ServiceUnavailable'}
+  /api/productos:
+    get:
+      tags: [Productos]
+      summary: Listar productos del catálogo
+      responses:
+        '200':
+          description: Lista de productos
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  productos:
+                    type: array
+                    items: {$ref: '#/components/schemas/Producto'}
+        '503': {$ref: '#/components/responses/ServiceUnavailable'}
+    post:
+      tags: [Productos]
+      summary: Registrar un producto
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ProductoNuevo'}
+            example: {id: agua, nombre: Agua 500 ml, precioCentavos: 125}
+      responses:
+        '201':
+          description: Producto registrado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  producto: {$ref: '#/components/schemas/Producto'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/Invalid'}
+        '503': {$ref: '#/components/responses/ServiceUnavailable'}
+  /api/productos/{id}:
+    patch:
+      tags: [Productos]
+      summary: Actualizar nombre, precio o disponibilidad
+      parameters:
+        - {$ref: '#/components/parameters/ProductId'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              minProperties: 1
+              properties:
+                nombre: {type: string, minLength: 2, maxLength: 120}
+                precioCentavos: {type: integer, minimum: 0}
+                activo: {type: boolean}
+            example: {precioCentavos: 175}
+      responses:
+        '200':
+          description: Producto actualizado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  producto: {$ref: '#/components/schemas/Producto'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '422': {$ref: '#/components/responses/Invalid'}
+        '503': {$ref: '#/components/responses/ServiceUnavailable'}
+  /api/clientes:
+    get:
+      tags: [Clientes]
+      summary: Listar clientes ficticios (máximo 100)
+      responses:
+        '200':
+          description: Clientes registrados
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  clientes: {type: array, items: {$ref: '#/components/schemas/Cliente'}}
+        '503': {$ref: '#/components/responses/ServiceUnavailable'}
+    post:
+      tags: [Clientes]
+      summary: Registrar cliente de prueba
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [nombre]
+              properties:
+                nombre: {type: string, minLength: 2, maxLength: 100}
+                telefono: {type: string, nullable: true, minLength: 6, maxLength: 30}
+            example: {nombre: Ana Demo, telefono: '0990000000'}
+      responses:
+        '201':
+          description: Cliente registrado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  cliente: {$ref: '#/components/schemas/Cliente'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '422': {$ref: '#/components/responses/Invalid'}
+        '503': {$ref: '#/components/responses/ServiceUnavailable'}
+  /api/sesiones:
+    post:
+      tags: [Sesiones]
+      summary: Abrir carrito persistente de un cliente o anónimo
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                clienteId: {type: string, format: uuid, nullable: true}
+            example: {}
+      responses:
+        '201':
+          description: Sesión creada
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sesion: {$ref: '#/components/schemas/Sesion'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '503': {$ref: '#/components/responses/ServiceUnavailable'}
+  /api/sesiones/{id}:
+    get:
+      tags: [Sesiones]
+      summary: CU-03 - Consultar el total sin modificar el carrito
+      parameters:
+        - {$ref: '#/components/parameters/SessionId'}
+      responses:
+        '200':
+          description: Carrito con total autoritativo de PostgreSQL
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sesion: {$ref: '#/components/schemas/Sesion'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '503': {$ref: '#/components/responses/ServiceUnavailable'}
+  /api/sesiones/{id}/items:
+    parameters:
+      - {$ref: '#/components/parameters/SessionId'}
+    post:
+      tags: [Sesiones]
+      summary: CU-01 - Agregar producto al carrito
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ItemQuantity'}
+            example: {productId: pepperoni-familiar, quantity: 1}
+      responses:
+        '200': {$ref: '#/components/responses/Session'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/Invalid'}
+        '503': {$ref: '#/components/responses/ServiceUnavailable'}
+    patch:
+      tags: [Sesiones]
+      summary: CU-02 - Cambiar un producto por otro atómicamente
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [fromProductId, toProductId, quantity]
+              properties:
+                fromProductId: {type: string}
+                toProductId: {type: string}
+                quantity: {type: integer, minimum: 1, maximum: 20}
+            example: {fromProductId: pepperoni-familiar, toProductId: hawaiana-mediana, quantity: 1}
+      responses:
+        '200': {$ref: '#/components/responses/Session'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/Invalid'}
+        '503': {$ref: '#/components/responses/ServiceUnavailable'}
+    delete:
+      tags: [Sesiones]
+      summary: Quitar una cantidad del carrito
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ItemQuantity'}
+      responses:
+        '200': {$ref: '#/components/responses/Session'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/Invalid'}
+        '503': {$ref: '#/components/responses/ServiceUnavailable'}
+  /api/sesiones/{id}/confirmar:
+    post:
+      tags: [Sesiones]
+      summary: CU-04 - Confirmar explicitamente y guardar pedido
+      parameters:
+        - {$ref: '#/components/parameters/SessionId'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [confirmar]
+              properties:
+                confirmar: {type: boolean, enum: [true]}
+            example: {confirmar: true}
+      responses:
+        '201':
+          description: Pedido persistido; precios históricos congelados
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  pedido: {$ref: '#/components/schemas/Pedido'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/Invalid'}
+        '503': {$ref: '#/components/responses/ServiceUnavailable'}
+  /api/pedidos:
+    get:
+      tags: [Pedidos]
+      summary: Listar últimos 100 pedidos confirmados de prueba
+      responses:
+        '200':
+          description: Pedidos persistidos
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  pedidos: {type: array, items: {$ref: '#/components/schemas/PedidoResumen'}}
+        '503': {$ref: '#/components/responses/ServiceUnavailable'}
+  /api/pedidos/{id}:
+    get:
+      tags: [Pedidos]
+      summary: Consultar un pedido confirmado y sus líneas congeladas
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+      responses:
+        '200':
+          description: Pedido encontrado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  pedido: {$ref: '#/components/schemas/Pedido'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '503': {$ref: '#/components/responses/ServiceUnavailable'}
+components:
+  parameters:
+    SessionId:
+      name: id
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+    ProductId:
+      name: id
+      in: path
+      required: true
+      schema: {type: string, minLength: 1, maxLength: 70}
+  schemas:
+    Producto:
+      type: object
+      required: [id, nombre, precioCentavos, activo]
+      properties:
+        id: {type: string, example: pepperoni-familiar}
+        nombre: {type: string, example: Pizza pepperoni familiar}
+        precioCentavos: {type: integer, example: 1400}
+        activo: {type: boolean, example: true}
+    ProductoNuevo:
+      type: object
+      required: [id, nombre, precioCentavos]
+      properties:
+        id: {type: string, example: agua}
+        nombre: {type: string, example: Agua 500 ml}
+        precioCentavos: {type: integer, minimum: 0, example: 125}
+    Cliente:
+      type: object
+      required: [id, nombre, creadoEn]
+      properties:
+        id: {type: string, format: uuid}
+        nombre: {type: string}
+        telefono: {type: string, nullable: true}
+        creadoEn: {type: string, format: date-time}
+    ItemQuantity:
+      type: object
+      required: [productId, quantity]
+      properties:
+        productId: {type: string, example: pepperoni-familiar}
+        quantity: {type: integer, minimum: 1, maximum: 20, example: 1}
+    Linea:
+      type: object
+      properties:
+        productId: {type: string}
+        name: {type: string}
+        quantity: {type: integer}
+        priceCents: {type: integer}
+        subtotalCents: {type: integer}
+    Sesion:
+      type: object
+      properties:
+        id: {type: string, format: uuid}
+        customerId: {type: string, format: uuid, nullable: true}
+        status: {type: string, enum: [abierta, confirmada]}
+        createdAt: {type: string, format: date-time}
+        items: {type: array, items: {$ref: '#/components/schemas/Linea'}}
+        totalCents: {type: integer}
+    PedidoResumen:
+      type: object
+      properties:
+        id: {type: string, format: uuid}
+        sessionId: {type: string, format: uuid}
+        customerId: {type: string, format: uuid, nullable: true}
+        status: {type: string, example: confirmado}
+        totalCents: {type: integer}
+        createdAt: {type: string, format: date-time}
+    Pedido:
+      allOf:
+        - {$ref: '#/components/schemas/PedidoResumen'}
+        - type: object
+          properties:
+            items: {type: array, items: {$ref: '#/components/schemas/Linea'}}
+    Error:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code: {type: string, example: CANTIDAD_INVALIDA}
+            message: {type: string, example: Cantidad entera entre 1 y 20.}
+  responses:
+    Session:
+      description: Carrito actualizado y total recalculado
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              sesion: {$ref: '#/components/schemas/Sesion'}
+    BadRequest:
+      description: JSON o ID inválido
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+    NotFound:
+      description: Registro o producto inexistente
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+    Conflict:
+      description: Duplicado o sesión ya confirmada
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+    Invalid:
+      description: Violación de reglas de negocio
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+    ServiceUnavailable:
+      description: Servidor local o PostgreSQL no disponible
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
