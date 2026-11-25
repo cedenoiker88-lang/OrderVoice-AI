@@ -331,7 +331,7 @@ export default function Home() {
             <div className="menu-list">
               {products.map((p) => (
                 <div className="menu-item" key={p.id}>
-                  <div className="food-icon">{p.id === "gaseosa" ? "🥤" : "🍕"}</div>
+                  <div className="food-icon">{/\b(?:agua|gaseosa|refresco|cola|jugo|bebida)\b/i.test(p.nombre) ? "🥤" : "🍕"}</div>
                   <div className="food-name"><strong>{p.nombre}</strong><small>{usd(p.precioCentavos)}</small></div>
                   <button className="add-btn" type="button" title={`Añadir ${p.nombre}`}
                     disabled={busy || voiceActive} onClick={() => void addProduct(p)}>+</button>
