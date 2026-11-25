@@ -17,6 +17,7 @@ PRESENTACIÓN
    v
 APLICACIÓN
   src/application/monolith-service.js  casos de uso y reglas
+  src/application/conversation.ts      orquesta chat y sesiones
   src/application/domain.js            validaciones y errores de negocio
   src/lib/order-engine.ts              parser local de texto
   src/lib/pizza-dialogue.ts            diálogos / correcciones locales
@@ -43,6 +44,7 @@ Base PostgreSQL local
 
 ## Decisiones importantes
 
+- **Alcance de la voz:** la interfaz invoca \`/api/chat\` con texto transcrito; el controlador HTTP delega en \`src/application/conversation.ts\`, que utiliza el motor local, el servicio y PostgreSQL. Los menús añadidos por APIs propias aparecen en el catálogo, mientras que el intérprete de voz reconoce solo los siete productos iniciales.
 - **Integridad:** `precioCentavos` se recibe solamente al crear/modificar un producto. En los carritos y pedidos el servidor lee precios desde PostgreSQL: jamás confía en precios enviados desde el navegador.
 - **Atomicidad:** `withSession` inicia una transacción, bloquea la sesión, aplica las reglas y solo entonces guarda. Una excepción provoca `ROLLBACK`. La confirmación guarda precios históricos en `pedido_items` y una sesión no puede confirmarse dos veces.
 - **Validación:** cantidades 1..20, identificadores y precios verificables. Endpoints académicos limitados a `localhost` para evitar acceso desde túneles públicos. En un sistema comercial haría falta autenticación, autorización por roles y más controles.
