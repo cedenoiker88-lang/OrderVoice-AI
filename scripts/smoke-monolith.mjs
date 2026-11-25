@@ -98,11 +98,18 @@ r=await request("POST","/api/chat",{sessionId:chatId,message:"¿Cuánto es el to
 assert.equal(r.status,200);
 assert.equal(r.data.cart[0].productId,"hawaiana-mediana");
 // Cierre conversacional sin volver a mostrar el menú y sin confirmar por accidente.
-r=await request("POST","/api/chat",{sessionId:chatId,message:"No, con eso estaría todo",browserVoice:true});
-assert.equal(r.status,200);
-assert.match(r.data.reply,/confirmo mi pedido/i);
-assert.equal(r.data.cart[0].productId,"hawaiana-mediana");
-assert.equal(r.data.order,undefined);
+for (const close of [
+  "No, con eso estaría todo",
+  "No quiero pedir, ya no quiero pedir nada más",
+  "Quiero pedir nada más, ya quiero"
+]) {
+  r=await request("POST","/api/chat",{sessionId:chatId,message:close,browserVoice:true});
+  assert.equal(r.status,200,close);
+  assert.match(r.data.reply,/confirmo mi pedido/i,close);
+  assert.doesNotMatch(r.data.reply,/tenemos pizza/i,close);
+  assert.equal(r.data.cart[0].productId,"hawaiana-mediana",close);
+  assert.equal(r.data.order,undefined,close);
+}
 r=await request("POST","/api/chat",{sessionId:chatId,message:"Confirmo mi pedido"});
 assert.equal(r.status,200);assert.ok(r.data.order?.id);
 assert.equal(r.data.order.totalCents,1000);
