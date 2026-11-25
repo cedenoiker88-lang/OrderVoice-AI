@@ -34,6 +34,11 @@ assert.equal(fastUnderstand("Confirmo el pedido").action, "confirm");
 assert.equal(fastUnderstand("No confirmo el pedido"), null);
 assert.equal(fastUnderstand("Vacía el carrito").action, "clear");
 assert.equal(fastUnderstand("No vacíes el carrito"), null);
+for (const message of ["No, con eso estaría todo.", "Con eso sería todo", "Ya no quiero nada más", "No, gracias", "Nada más"]) {
+  const cmd = fastUnderstand(message);
+  assert.equal(cmd?.action, "question", message);
+  assert.match(cmd.answer, /confirmo mi pedido/i, message);
+}
 assert.equal(fastUnderstand("¿Cuánto cuesta la hawaiana familiar?").action, "question");
 assert.match(fastUnderstand("¿Cuánto cuesta la hawaiana familiar?").answer, /15,00|15\.00/);
 assert.equal(fastUnderstand("Quiero una gaseosa y una pizza"), null);
