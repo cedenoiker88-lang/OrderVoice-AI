@@ -1,3 +1,28 @@
+# ENTREGA ACADÉMICA ACTUAL — CRITERIO 2 DEL RdA 1 (2026)
+
+**Rama de entrega:** `dev/criterio2-monolito`. **Proyecto individual.** Monolito modular Next.js + PostgreSQL local, APIs de negocio desarrolladas dentro del repositorio. **OpenAI solo transcribe voz**: no interpreta pedidos ni guarda información. Twilio y los antiguos módulos telefónicos quedan fuera del flujo evaluado.
+
+## Guía rápida (Windows / VS Code)
+
+1. Crea la base local `ordervoice_db` en pgAdmin.
+2. En VS Code ejecuta `npm.cmd install` (se agregó el controlador PostgreSQL `pg`).
+3. En `.env.local` configura `DATABASE_URL=postgresql://postgres:TU_PASSWORD@localhost:5432/ordervoice_db`.
+4. Ejecuta `npm.cmd run db:init` para crear seis tablas y siete productos ficticios.
+5. Ejecuta `npm.cmd run typecheck` y `npm.cmd run test:monolith`.
+6. Inicia con `npm.cmd run dev`; en otra terminal ejecuta `npm.cmd run test:monolith:http`.
+7. Abre `http://localhost:3000` para conversar por voz (necesita `ORDERVOICE_BROWSER_STT_PROVIDER=openai` y clave de OpenAI solo para audio).
+
+**Documentos exigidos en la rúbrica:**
+- [Guía de exposición y reproducibilidad](docs/GUIA_C2_EXPOSICION.md)
+- [Arquitectura del monolito en tres capas](docs/ARQUITECTURA_C2.md)
+- [Contrato OpenAPI](docs/openapi.yaml)
+- [Bitácora y trazabilidad](docs/bitacora.md)
+- [Pruebas automatizadas](tests/monolith.test.mjs)
+
+**No confundir con la versión histórica:** todo lo que viene después de esta sección describe el prototipo de fases previas (con OpenAI para razonamiento o integración con Twilio), **NO** el alcance evaluado para Criterio 2. No subir claves ni `.env.local`.
+
+---
+
 > 🎙 **Nuevo modo de voz continua (experimental v1.0):** pulsa una sola vez **Iniciar conversación continua** en Microsoft Edge. La aplicación detecta turnos hablados, transcribe con OpenAI, interpreta pedidos con la IA y responde por voz antes de escuchar el siguiente turno. No usa Twilio.  
 > [**Ver guía paso a paso y limitaciones**](docs/CONVERSACION_CONTINUA_EDGE_V10.md) · Rama `dev/handsfree-browser-v1.0`.
 >
