@@ -28,6 +28,8 @@ Los drivers provienen de la entrega del Criterio 1:
 
 | 25/11/2026 | Corrección de cierre por voz y limpieza de datos temporales | `src/lib/fast-intents.ts`, `scripts/test-fast-intents.cjs`, `scripts/smoke-monolith.mjs`, `src/app/page.tsx` | Se añadieron regresiones para «No, con eso estaría todo», se exige confirmación explícita y se limpia el producto de prueba al terminar las pruebas HTTP; ícono de bebidas corregido | **Pendiente reejecutar CI después de estos commits y sincronizar PC local**. Los productos de pruebas anteriores se deben retirar manualmente de la base local. |
 
+| 25/11/2026 | Más variantes reales de cierre por voz | `src/lib/fast-intents.ts`, `scripts/test-fast-intents.cjs`, `scripts/smoke-monolith.mjs` | Se incluyeron las transcripciones reales «No quiero pedir, ya no quiero pedir nada más» y «Quiero pedir nada más, ya quiero»; se mantiene la confirmación explícita | Pendiente comprobar CI y voz con el código actualizado en la computadora |
+
 ## Estado de verificación para la entrega
 
 - **Confirmado en el equipo del estudiante (25/11/2026):** los comandos de pruebas locales terminaron sin errores; el servidor inició; la prueba de integración `npm.cmd run test:monolith:http` aprobó los cuatro casos de uso, CRUD de productos/clientes, validaciones 422/409 y chat con intérprete local persistente. Las consultas ejecutadas en pgAdmin devolvieron pedidos y líneas guardadas en PostgreSQL.
