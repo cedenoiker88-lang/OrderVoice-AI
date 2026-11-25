@@ -32,21 +32,16 @@ jobs:
         with:
           node-version: '24'
           cache: npm
-      # npm install actualiza el lock heredado al incorporar el driver pg.
       - name: Instalar dependencias
         run: npm install --no-audit --no-fund
-      - name: Verificar tipos y pruebas de reglas sin APIs externas
-        run: |
-          npm run typecheck
-          npm run test:monolith
-          npm run test:plan
-          npm run test:handsfree
-          npm run test:voice:currency
+      - name: Ejecutar pruebas sin servicios externos
+        run: npm test
+      - name: Verificar build de producción
+        run: npm run build
       - name: Crear tablas y menú en PostgreSQL
         run: npm run db:init
       - name: Levantar el monolito
-        run: |
-          npm run dev > /tmp/ordervoice-next.log 2>&1 &
-      - name: Ejecutar pruebas HTTP de extremo a extremo
+        run: npm run dev > /tmp/ordervoice-next.log 2>&1 &
+      - name: Ejecutar pruebas HTTP y PostgreSQL
         run: |
           npm run test:monolith:http || (cat /tmp/ordervoice-next.log && exit 1)
