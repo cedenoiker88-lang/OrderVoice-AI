@@ -64,12 +64,16 @@ export function fastUnderstand(message: string): Command | null {
   if (/^(?:hola|buenas|buenos dias|buenas tardes|buenas noches)$/.test(normalize(message))) {
     return command("question", [], "¡Hola! Estoy lista para ayudarte con tu pedido. ¿Qué pizza te gustaría?");
   }
-  // "No, con eso estaría todo" significa no añadir más productos.
-  // No confirmar automáticamente: CU-04 exige una confirmación explícita.
-  if (/^(?:(?:no|ya) )?(?:con eso (?:estaria|seria) todo|eso (?:es|seria|estaria) todo|con eso esta bien)$/.test(text) ||
-      /^(?:ya )?no (?:quiero|deseo|necesito) nada mas$/.test(text) ||
-      /^(?:no gracias|nada mas|seria todo|ya seria todo|es todo)$/.test(text)) {
-    return command("question", [], "Perfecto, no agregaré nada más. Para guardar tu pedido, di: Confirmo mi pedido.");
+  // Cierre natural del turno: OpenAI puede transcribir negaciones y muletillas
+  // como "No quiero pedir, ya no quiero pedir nada más".
+  // No se guarda ni se cancela automáticamente: CU-04 exige confirmación explícita.
+  // Si menciona una pizza o bebida, dejamos que el motor procese el pedido.
+  const mentionsProduct = /\b(?:pizzas?|pepperoni|hawaianas?|margaritas?|gaseosas?|colas?|refrescos?|sodas?)\b/.test(text);
+  const noMoreItems = /\b(?:nada mas|no gracias|con eso (?:estaria|seria|esta) todo|eso (?:es|seria|estaria) todo|con eso esta bien|es todo|seria todo|ya seria todo|eso seria suficiente|terminamos por ahora)\b/.test(text) ||
+    /^(?:no|ya no) (?:quiero|deseo|necesito) (?:pedir|agregar|anadir|ordenar)(?: mas)?$/.test(text) ||
+    /^(?:listo|ya esta|terminamos)$/.test(text);
+  if (noMoreItems && !mentionsProduct) {
+    return command("question", [], "Perfecto, no agregaré nada más. Tu pedido sigue intacto. Para guardarlo, di: Confirmo mi pedido.");
   }
 
 
