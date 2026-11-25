@@ -305,6 +305,109 @@ paths:
         '400': {$ref: '#/components/responses/BadRequest'}
         '404': {$ref: '#/components/responses/NotFound'}
         '503': {$ref: '#/components/responses/ServiceUnavailable'}
+  /api/chat:
+    post:
+      tags: [Sesiones]
+      summary: Interpretar localmente una frase y aplicar el pedido a PostgreSQL
+      description: |
+        El frontend y la transcripción por voz envían TEXTO; el motor de reglas
+        es local. No se invoca OpenAI para interpretar pedidos ni calcular precios.
+        Los campos cart y order salen del monolito y la base de datos.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [message, sessionId]
+              properties:
+                message: {type: string, minLength: 1, maxLength: 500}
+                sessionId: {type: string, format: uuid}
+                browserVoice: {type: boolean}
+                pending: {type: object, nullable: true, additionalProperties: true}
+            example: {message: "Quiero una pizza pepperoni familiar", sessionId: "11111111-1111-4111-8111-111111111111", browserVoice: false}
+      responses:
+        '200':
+          description: Pedido interpretado con reglas locales y carrito persistente
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  reply: {type: string, example: "Añadí los productos. Total actual: $14,00. ¿Deseas algo más?"}
+                  cart: {type: array, items: {$ref: '#/components/schemas/ItemQuantity'}}
+                  order: {$ref: '#/components/schemas/Pedido'}
+                  pending: {type: object, nullable: true, additionalProperties: true}
+                  mode: {type: string, enum: [local]}
+                  metrics:
+                    type: object
+                    properties:
+                      interpretMs: {type: integer}
+                      serverMs: {type: integer}
+        '400':
+          description: Solicitud inválida
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error: {type: string, example: Se requiere mensaje válido y sessionId.}
+        '404':
+          description: Sesión inexistente
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error: {type: string, example: No existe esa sesión.}
+        '409':
+          description: Sesión ya confirmada
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error: {type: string, example: Esta sesión ya está confirmada.}
+        '503':
+          description: No disponible el servicio o PostgreSQL
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error: {type: string}
+  /api/browser-transcribe:
+    post:
+      tags: [Sistema]
+      summary: Transcribir audio con la única API externa autorizada
+      description: |
+        Requiere ORDERVOICE_BROWSER_STT_PROVIDER=openai y OPENAI_API_KEY
+        en el servidor. El reconocimiento de texto es externo pero las
+        operaciones de negocio se realizan exclusivamente en el monolito.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [audio]
+              properties:
+                audio: {type: string, format: binary}
+      responses:
+        '200':
+          description: Transcripción obtenida
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  text: {type: string}
+                  provider: {type: string, enum: [openai]}
+        '400': {description: Audio o formulario inválidos}
+        '403': {description: Origen no autorizado}
+        '422': {description: Transcripción vacía o demasiado larga}
+        '502': {description: Error de transcripción externa}
+        '503': {description: Servicio de transcripción desactivado}
 components:
   parameters:
     SessionId:
