@@ -20,6 +20,11 @@ Los drivers provienen de la entrega del Criterio 1:
 | 24/11/2026 | Automatización de éxitos/errores, Criterio 2 | `tests/monolith.test.mjs`, `scripts/smoke-monolith.mjs`, workflow GitHub Actions | Casos CU-01..CU-04, entradas inválidas, confirmaciones duplicadas | **No declarar aprobado** hasta obtener resultado de terminal o CI |
 | 24/11/2026 | Reproducibilidad y exposición | `docs/GUIA_C2_EXPOSICION.md`, `README.md` | Pasos y demostración desde navegador/PowerShell | Grabar evidencias después de ejecutar correctamente |
 
+| 25/11/2026 | Evidencia real en pgAdmin, CU-01..CU-04 | PostgreSQL local / capturas de pedido y línea | Ejecutadas en PC del estudiante: `npm run typecheck`, 10 pruebas de monolito, 35 antiguas pruebas de plan y HTTP/PostgreSQL; pedido confirmado de USD 10,00 visible en SQL | **Comprobado en entorno local antes de simplificación**; prueba HTTP muestra persistencia real |
+| 25/11/2026 | Limpieza de rama y alineación estricta con Criterio 2 | Retiro de 44 archivos históricos: Twilio, Ollama, IA externa de interpretación, pruebas antiguas; simplificación de `src/app/page.tsx` y `README.md` | CI de GitHub Actions realiza typecheck, pruebas, build y PostgreSQL HTTP | Conservadas las ramas anteriores; pendiente validar cambios finales locales |
+| 25/11/2026 | Capas y límites de proveedor más claros | `src/application/conversation.ts`, `src/app/api/chat/route.ts` | Chat sin servicio externo de razonamiento; reglas en aplicación y SQL solo en repositorio | Reprobar en interfaz y actualizar SHA final tras CI |
+| 25/11/2026 | Ayuda para la exposición | `docs/PREPARACION_EXPOSICION.md` | Explicación de APIs, tres capas, transacciones y preguntas del profesor | Guion disponible para repasar |
+
 ## Estado honesto
 
 El código se ha publicado en una rama de implementación. Las pruebas diseñadas no equivalen a pruebas **ejecutadas**. Registrar aquí posteriormente la salida real de `npm run typecheck`, `npm run test:monolith` y `npm run test:monolith:http`, fechas, commit SHA y cualquier defecto reproducido.
