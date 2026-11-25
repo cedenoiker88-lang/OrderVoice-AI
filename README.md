@@ -1,127 +1,82 @@
-# ENTREGA ACADÉMICA ACTUAL — CRITERIO 2 DEL RdA 1 (2026)
+# OrderVoice AI · Criterio 2 — Monolito en capas
 
-**Rama de entrega:** `dev/criterio2-monolito`. **Proyecto individual.** Monolito modular Next.js + PostgreSQL local, APIs de negocio desarrolladas dentro del repositorio. **OpenAI solo transcribe voz**: no interpreta pedidos ni guarda información. Twilio y los antiguos módulos telefónicos quedan fuera del flujo evaluado.
+Proyecto **individual** de Arquitectura de Software (PUCE). Prototipo de una pizzería ficticia. Rama de entrega: **`dev/criterio2-monolito`**. Entrega por Moodle: enlace GitHub + rama y SHA del commit. **Fecha límite: jueves 26/11/2026, 13:30 (Ecuador).**
 
-## Guía rápida (Windows / VS Code)
+## Qué se entrega
 
-1. Crea la base local `ordervoice_db` en pgAdmin.
-2. En VS Code ejecuta `npm.cmd install` (se agregó el controlador PostgreSQL `pg`).
-3. En `.env.local` configura `DATABASE_URL=postgresql://postgres:TU_PASSWORD@localhost:5432/ordervoice_db`.
-4. Ejecuta `npm.cmd run db:init` para crear seis tablas y siete productos ficticios.
-5. Ejecuta `npm.cmd run typecheck` y `npm.cmd run test:monolith`.
-6. Inicia con `npm.cmd run dev`; en otra terminal ejecuta `npm.cmd run test:monolith:http`.
-7. Abre `http://localhost:3000` para conversar por voz (necesita `ORDERVOICE_BROWSER_STT_PROVIDER=openai` y clave de OpenAI solo para audio).
+Un **único monolito Next.js (Node.js + TypeScript)** con operaciones HTTP propias, PostgreSQL local y reglas de negocio locales. Los principales casos de uso son:
 
-**Documentos exigidos en la rúbrica:**
-- [Guía de exposición y reproducibilidad](docs/GUIA_C2_EXPOSICION.md)
-- [Arquitectura del monolito en tres capas](docs/ARQUITECTURA_C2.md)
-- [Contrato OpenAPI](docs/openapi.yaml)
-- [Bitácora y trazabilidad](docs/bitacora.md)
-- [Pruebas automatizadas](tests/monolith.test.mjs)
+| Caso | Operación | Resultado |
+|---|---|---|
+| CU-01 | Agregar pepperoni familiar | Carrito con USD 14,00 |
+| CU-02 | Cambiar por hawaiana mediana | Carrito con USD 10,00 |
+| CU-03 | Consultar total sin modificar | USD 10,00 |
+| CU-04 | Confirmar expresamente | Pedido guardado en PostgreSQL, sin duplicados |
 
-**No confundir con la versión histórica:** todo lo que viene después de esta sección describe el prototipo de fases previas (con OpenAI para razonamiento o integración con Twilio), **NO** el alcance evaluado para Criterio 2. No subir claves ni `.env.local`.
+**OpenAI es opcional y únicamente se usa para transcribir voz a texto.** La interpretación de pedidos, las APIs REST, el cálculo de precios y la base de datos son propios. La voz de salida utiliza la síntesis de Edge. **No** se usan Twilio, Ollama ni la API de OpenAI para interpretar pedidos.
 
----
+## Preparación en Windows con VS Code y PostgreSQL 18
 
-> 🎙 **Nuevo modo de voz continua (experimental v1.0):** pulsa una sola vez **Iniciar conversación continua** en Microsoft Edge. La aplicación detecta turnos hablados, transcribe con OpenAI, interpreta pedidos con la IA y responde por voz antes de escuchar el siguiente turno. No usa Twilio.  
-> [**Ver guía paso a paso y limitaciones**](docs/CONVERSACION_CONTINUA_EDGE_V10.md) · Rama `dev/handsfree-browser-v1.0`.
->
-# OrderVoice AI — Starter v0.1
+1. Instala Node.js (versión 20.9 o superior), PostgreSQL y pgAdmin.
+2. En pgAdmin crea la base local `ordervoice_db`. No hace falta crear tablas a mano.
+3. En PowerShell, dentro de la carpeta que contiene `package.json`:
+   ```powershell
+   npm.cmd install
+   ```
+4. Crea `.env.local` a partir de `.env.local.example`, con tu propia contraseña local:
+   ```dotenv
+   DATABASE_URL=postgresql://postgres:TU_PASSWORD@localhost:5432/ordervoice_db
+   ORDERVOICE_BROWSER_STT_PROVIDER=disabled
+   ```
+   Para habilitar voz, cambia la variable a `openai` y configura `OPENAI_API_KEY` en privado. Si la contraseña de PostgreSQL tiene símbolos reservados de URL, deben codificarse.
+5. Crea las tablas y carga siete productos de prueba:
+   ```powershell
+   npm.cmd run db:init
+   ```
+6. Ejecuta pruebas unitarias y revisión de TypeScript:
+   ```powershell
+   npm.cmd test
+   ```
+7. Inicia el sistema:
+   ```powershell
+   $env:NODE_USE_SYSTEM_CA="1"
+   npm.cmd run dev
+   ```
+   Abre **http://localhost:3000**.
+8. En **otra terminal** de VS Code, con Next.js abierto, ejecuta:
+   ```powershell
+   npm.cmd run test:monolith:http
+   ```
 
-> **¿Vas a instalar OrderVoice AI en Windows o en una computadora del laboratorio?** Sigue la **[Guía de instalación paso a paso para v0.6](docs/GUIA_INSTALACION_WINDOWS.md)**: programas que debes descargar, instalación con `npm.cmd`, modo demostración sin claves y opciones de Ollama y telefonía.
->
-> **Aviso:** el texto siguiente documenta principalmente la versión inicial **v0.1**. Para la rama actual **dev/v0.6** y sus funciones telefónicas, consulta la guía anterior y los archivos de `docs/`.
+La prueba HTTP crea **datos ficticios** en PostgreSQL. No toca pedidos reales ni consume OpenAI.
 
-Prototipo local para una pizzería ficticia. Permite conversar por chat, dictar frases con el micrófono del navegador, calcular un carrito con precios controlados por el servidor y confirmar pedidos que se guardan **solo en este navegador**.
-
-> No recibe llamadas telefónicas. No se conecta a una cocina ni envía pedidos reales. No almacena datos personales de clientes. No sirve todavía para uso comercial.
-
-## 1. Requisitos
-
-- Windows 10/11, macOS o Linux
-- Node.js 20.9 o superior (recomendado instalar la versión LTS actual de https://nodejs.org/)
-- Visual Studio Code
-- Conexión a Internet para instalar paquetes
-- Chrome o Edge para intentar usar dictado (la compatibilidad de Web Speech API varía)
-
-Abre una terminal de PowerShell en la carpeta `ordervoice-ai-starter` donde está `package.json`.
-
-```powershell
-node --version
-npm --version
-npm install
-npm run dev
-```
-
-Abre http://localhost:3000 . Si el puerto 3000 está ocupado, Next.js puede elegir otro: revisa la terminal.
-
-**Importante:** Ejecuta `npm install` en la misma carpeta donde se encuentra `package.json`.
-
-## 2. Prueba sin pagar una API (modo demo)
-
-Sin configurar nada, el sistema reconoce frases simples:
-
-- `Quiero dos pepperoni familiares y una hawaiana mediana`
-- `Agrega una gaseosa`
-- `Quita una pepperoni familiar`
-- `Confirmo el pedido`
-
-El modo demo no es IA real: usa reglas limitadas. Los botones `+` del menú también sirven para probarlo.
-
-## 3. Activar interpretación con IA real (opcional)
-
-1. Crea una clave de API en tu cuenta de OpenAI Platform. La API tiene facturación propia, separada de una suscripción a ChatGPT.
-2. Copia `.env.local.example` y renombra la copia `.env.local`.
-3. Coloca la clave solamente ahí:
-
-```env
-OPENAI_API_KEY=tu_clave_privada
-OPENAI_MODEL=gpt-5.6-terra
-```
-
-4. Reinicia el servidor: Ctrl+C y `npm run dev`.
-5. Envía un mensaje. El indicador cambiará de MODO DEMO a IA ACTIVADA después de la primera respuesta.
-
-Nunca subas `.env.local` a GitHub. Nunca pongas la clave dentro del código del navegador.
-
-**Si aparece error 500:** revisa la clave, saldo y acceso de tu cuenta al modelo seleccionado; revisa la terminal del servidor.
-
-## 4. ¿Por qué los precios no los inventa la IA?
-
-El modelo devuelve una **intención estructurada** (añadir, quitar, confirmar, preguntar) y los IDs solicitados. `order-engine.ts` valida que cada ID exista en `menu.ts`, las cantidades sean válidas, y calcula el total de forma determinista en centavos.
-
-- Menú: `src/lib/menu.ts`
-- Motor de pedidos: `src/lib/order-engine.ts`
-- Integración API de IA: `src/app/api/chat/route.ts`
-- Interfaz del cliente + panel: `src/app/page.tsx`
-- Estilos: `src/app/globals.css`
-
-## 5. Limitaciones de seguridad antes de usarlo con clientes reales
-
-- El carrito llega desde el navegador. Aunque se sanea y se recalcula, no hay **sesiones autenticadas de servidor** para evitar duplicados/repeticiones de confirmación desde clientes maliciosos.
-- Los pedidos se guardan en `localStorage` y **no son visibles por otros dispositivos ni personal de cocina**.
-- El motor de interpretación puede equivocarse con frases ambiguas. Se necesitan pruebas y mejor gestión de contexto multi-turno.
-- No hay autenticación, multi-tenancy, rate limiting, control de costos de IA, inventario, impuestos, delivery, direcciones ni procesamiento de pagos.
-- La transcripción por Web Speech API depende del navegador y en algunos casos envía audio a servicios externos. No es una solución telefónica profesional.
-- En producción se requiere base de datos, validación integral, consentimiento/avisos de privacidad aplicables, auditoría, políticas de retención de datos y transferencia a operadores humanos.
-
-## 6. Próximos pasos
-
-1. Supabase Postgres: restaurantes, menús, sesiones, pedidos y líneas de pedido; permisos RLS por restaurante.
-2. Backend: idempotencia en confirmaciones, precios/versionado, impuestos, zonas de entrega, stock, límites de uso.
-3. Voz profesional con OpenAI Realtime API por WebRTC.
-4. Llamadas con un proveedor SIP/telefónico y transferencia al humano.
-5. Panel en vivo con roles y estados de preparación, y piloto supervisado.
-
-## Arquitectura propuesta
+## Arquitectura obligatoria
 
 ```text
-Cliente (chat / navegador con micrófono / futuro teléfono)
-        ↓
-Frontend Next.js  →  API Next.js (/api/chat)
-                         ├─ OpenAI (interpretación estructurada)
-                         ├─ Motor determinista de pedidos
-                         └─ Futuro Supabase Postgres
-                                    ↓
-                         Panel / pantalla de cocina
+Usuario / navegador
+   → PRESENTACIÓN  src/app/page.tsx + src/app/api/**/route.ts
+   → APLICACIÓN    src/application/* + src/lib/{order-engine,pizza-dialogue,fast-intents,...}
+   → PERSISTENCIA  src/persistence/postgres.js
+   → PostgreSQL    seis tablas (sql/001_monolito.sql)
 ```
+
+`src/presentation/http.js` reúne la validación HTTP y conecta la capa de aplicación con el repositorio PostgreSQL. Los controladores HTTP no incluyen consultas SQL. `src/application/monolith-service.js` valida productos y cantidades y ejecuta transacciones. `src/application/conversation.ts` organiza el flujo del diálogo sin llamar a OpenAI.
+
+## Documentos exigidos por rúbrica
+
+- [Contrato API OpenAPI 3.0](docs/openapi.yaml) — rutas, cuerpos, respuestas, errores.
+- [Arquitectura y trazabilidad de casos de uso](docs/ARQUITECTURA_C2.md).
+- [Pruebas y guion de exposición](docs/GUIA_C2_EXPOSICION.md).
+- [Bitácora de incrementos y cambios](docs/bitacora.md).
+- [Pruebas de dominio](tests/monolith.test.mjs) y [prueba REST + PostgreSQL](scripts/smoke-monolith.mjs).
+- [Validación automática GitHub Actions](.github/workflows/criterio2-monolito.yml).
+
+Los módulos históricos de telefonía, IA externa para razonamiento y pruebas experimentales **no están en esta rama académica**, pero se conservaron en `dev/handsfree-browser-v1.0` y otras ramas anteriores. `main` no se modificó.
+
+## Límites de la demostración
+
+- Sistema educativo para **una pizzería ficticia**: sin autenticación comercial, pagos, reparto ni clientes reales.
+- La API local acepta operaciones únicamente en `localhost`. No debe desplegarse públicamente sin autenticación, controles de acceso y medidas de seguridad adicionales.
+- La voz es opcional; la evaluación REST y PostgreSQL funciona sin conexión con APIs externas.
+- El parser local reconoce productos del menú base (siete productos); la API de catálogo puede administrar más productos, pero no se han entrenado expresiones de voz para los nuevos.
+- No incluir `.env.local`, claves API ni contraseñas en GitHub, capturas o entregas.
