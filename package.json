@@ -29,14 +29,18 @@
     "test:phone:voice": "node scripts/test-phone-dynamic-voice.cjs",
     "prepare:phone:voice": "node scripts/prepare-phone-voice-pack.cjs",
     "test:phone:pack": "node scripts/test-phone-voice-pack.cjs",
-    "test:phone:fast": "node scripts/test-phone-fast.cjs"
+    "test:phone:fast": "node scripts/test-phone-fast.cjs",
+    "db:init": "node --env-file-if-exists=.env.local scripts/db-init.mjs",
+    "test:monolith": "node --test tests/monolith.test.mjs",
+    "test:monolith:http": "node --env-file-if-exists=.env.local scripts/smoke-monolith.mjs"
   },
   "dependencies": {
     "next": "^16.0.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "openai": "^6.0.0",
-    "zod": "^4.0.0"
+    "zod": "^4.0.0",
+    "pg": "^8.16.3"
   },
   "devDependencies": {
     "typescript": "^5.7.0",
