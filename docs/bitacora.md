@@ -24,9 +24,13 @@ Los drivers provienen de la entrega del Criterio 1:
 | 25/11/2026 | Limpieza de rama y alineación estricta con Criterio 2 | Retiro de 44 archivos históricos: Twilio, Ollama, IA externa de interpretación, pruebas antiguas; simplificación de `src/app/page.tsx` y `README.md` | CI de GitHub Actions realiza typecheck, pruebas, build y PostgreSQL HTTP | Conservadas las ramas anteriores; pendiente validar cambios finales locales |
 | 25/11/2026 | Capas y límites de proveedor más claros | `src/application/conversation.ts`, `src/app/api/chat/route.ts` | Chat sin servicio externo de razonamiento; reglas en aplicación y SQL solo en repositorio | Reprobar en interfaz y actualizar SHA final tras CI |
 | 25/11/2026 | Ayuda para la exposición | `docs/PREPARACION_EXPOSICION.md` | Explicación de APIs, tres capas, transacciones y preguntas del profesor | Guion disponible para repasar |
+| 25/11/2026 | Verificación final en el equipo del estudiante; CU-01..CU-04, QA-04 | Sin modificaciones al código de negocio: pruebas de la rama `dev/criterio2-monolito` | `npm.cmd test` finalizó sin errores; servidor Next.js iniciado; `npm.cmd run test:monolith:http` mostró ambos mensajes `OK` y un ID de pedido; en pgAdmin se consultaron tres pedidos confirmados y sus tres líneas de pizza hawaiana mediana por USD 10,00 | **Comprobado localmente:** rutas HTTP, PostgreSQL y errores controlados 422/409. Falta comprobar una prueba real del micrófono y la transcripción si se desea mostrar voz. |
 
-## Estado honesto
+## Estado de verificación para la entrega
 
-El código se ha publicado en una rama de implementación. Las pruebas diseñadas no equivalen a pruebas **ejecutadas**. Registrar aquí posteriormente la salida real de `npm run typecheck`, `npm run test:monolith` y `npm run test:monolith:http`, fechas, commit SHA y cualquier defecto reproducido.
+- **Confirmado en el equipo del estudiante (25/11/2026):** los comandos de pruebas locales terminaron sin errores; el servidor inició; la prueba de integración `npm.cmd run test:monolith:http` aprobó los cuatro casos de uso, CRUD de productos/clientes, validaciones 422/409 y chat con intérprete local persistente. Las consultas ejecutadas en pgAdmin devolvieron pedidos y líneas guardadas en PostgreSQL.
+- **No verificado en esta revisión:** el flujo completo de micrófono, red y transcripción OpenAI en tiempo real; también se debe revisar el estado de GitHub Actions en la pestaña Actions antes de afirmar que CI pasó.
+- **Alcance:** pizzería ficticia y datos de prueba; sin cobros, llamadas telefónicas ni integración con una cocina real.
+- **Reproducibilidad:** mantener privado el archivo `.env.local`; compartir con el docente la rama `dev/criterio2-monolito`, el commit de entrega y las instrucciones del README.
 
-No registrar llamadas reales, cobros, restaurantes reales, ni entrevistas que no se realizaron. No subir `.env.local`, credenciales ni datos personales.
+No subir `.env.local`, contraseñas, tokens ni datos personales.
