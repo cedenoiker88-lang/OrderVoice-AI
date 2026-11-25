@@ -1,219 +1,79 @@
 import { NextRequest, NextResponse } from "next/server";
-import OpenAI from "openai";
-import { z } from "zod";
-import { zodTextFormat } from "openai/helpers/zod";
-import { MENU, calculateTotal, sanitizeCart, type ConfirmedOrder } from "@/lib/menu";
-import { applyCommand, demoUnderstand, guardDestructiveIntent, type Command } from "@/lib/order-engine";
-import { understandWithOllama } from "@/lib/ollama";
+import { service, assertLocal, failure } from "@/presentation/http.js";
+import { sanitizeCart, formatUSD } from "@/lib/menu";
 import { advancePizzaConversation, sanitizePending } from "@/lib/pizza-dialogue";
 import { fastUnderstand } from "@/lib/fast-intents";
+import { demoUnderstand, guardDestructiveIntent, applyCommand } from "@/lib/order-engine";
 import { normalizeVoiceTranscript } from "@/lib/voice-vocabulary";
-import { applyOrderPlan } from "@/lib/order-plan";
-import { understandOrderPlan } from "@/lib/ai-order-planner";
 
-export const runtime = "nodejs";
-
-const CommandSchema = z.object({
-  action: z.enum(["add", "remove", "replace", "clear", "confirm", "question", "total"]),
-  items: z.array(z.object({ productId: z.string(), quantity: z.number().int() })),
-  replacements: z.array(z.object({ fromProductId: z.string(), toProductId: z.string(), quantity: z.number().int() })).optional(),
-  answer: z.string(),
-  needsClarification: z.boolean()
-});
-
-async function understandWithAI(message: string, cart: ReturnType<typeof sanitizeCart>, history: unknown): Promise<Command> {
-  const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-  const safeHistory = Array.isArray(history)
-    ? history.slice(-8).filter((t) => t && typeof t === "object")
-        .map((t) => ({ role: String(t.role ?? "").slice(0, 15), text: String(t.text ?? "").slice(0, 400) }))
-    : [];
-  const response = await client.responses.parse({
-    model: process.env.OPENAI_MODEL || "gpt-5.6-terra",
-    instructions: `Eres un operador que interpreta pedidos de la pizzería ficticia "Pizza Demo". Tu trabajo es interpretar la intención, NO modificar la base de datos.
-Menú autorizado en JSON: ${JSON.stringify(MENU.map(({ id, name, priceCents }) => ({ id, name, priceCents })))}.
-Devuelve una acción estructurada. Para add/remove usa EXCLUSIVAMENTE IDs exactos del menú y cantidades enteras de 1 a 20. No inventes sabores, tamaños, extras, precios, horarios, promociones, direcciones ni tiempos de entrega. Nunca sustituyas un producto por otro sin preguntar.
-Si faltan sabor, tamaño, cantidad o si hay cualquier ambigüedad, usa action=question, items=[], needsClarification=true y pregunta una sola cosa en "answer". Si el usuario está haciendo una pregunta, usa action=question y responde brevemente en "answer" solo con la información del menú autorizado. Si pide cambiar un producto por otro, usa action=replace, items=[] y replacements=[{fromProductId,toProductId,quantity}], solo cuando ambos productos son inequívocos. Si pregunta por el total del carrito, usa action=total e items=[]. Si confirma de manera explícita su pedido actual, usa action=confirm. Si pide vaciar todo, usa clear. Para solicitudes mixtas que no puedas representar sin perder información, pide aclaración. No digas que el pedido está confirmado por tu cuenta: lo decide el backend. Responde en español cordial ecuatoriano.`,
-    input: JSON.stringify({ currentCart: cart, lastMessages: safeHistory, customerMessage: message }),
-    text: { format: zodTextFormat(CommandSchema, "order_command") }
-  });
-  if (!response.output_parsed) throw new Error("No se pudo interpretar la respuesta estructurada");
-  return response.output_parsed;
-}
-
+/**
+ * Criterio 2: interpretación LOCAL, sin OpenAI para razonamiento y sin Ollama.
+ * La única API externa permitida es /api/browser-transcribe (voz a texto).
+ * La sesión y el pedido se almacenan en PostgreSQL mediante tres capas.
+ */
 export async function POST(request: NextRequest) {
-  const startedAt = performance.now();
+  const started=performance.now();
   try {
-    const body: unknown = await request.json();
-    if (!body || typeof body !== "object") return NextResponse.json({ error: "Solicitud inválida" }, { status: 400 });
-    // Evitar que una URL ngrok pública consuma créditos mediante /api/chat.
-    // Las llamadas Twilio legítimas invocan esta ruta internamente desde localhost.
-    if (process.env.ORDERVOICE_PROVIDER === "openai") {
-      const local = (host: string) => ["localhost", "127.0.0.1", "[::1]"].includes(host);
-      const hostname = new URL(request.url).hostname;
-      const forwarded = request.headers.get("x-forwarded-host")?.split(",")[0]?.trim();
-      let forwardedHostname: string | null = null;
-      if (forwarded) {
-        try { forwardedHostname = new URL("http://" + forwarded).hostname; }
-        catch { return NextResponse.json({ error: "Encabezado Host inválido." }, { status: 403 }); }
-      }
-      if (!local(hostname) || (forwardedHostname && !local(forwardedHostname))) {
-        return NextResponse.json({ error: "El motor OpenAI de pruebas solo funciona en localhost." }, { status: 403 });
-      }
+    assertLocal(request);
+    const body: unknown=await request.json();
+    if(!body || typeof body!=="object")return NextResponse.json({error:"Solicitud inválida."},{status:400});
+    const raw=body as Record<string,unknown>;
+    const message=typeof raw.message==="string"?raw.message.trim():"";
+    const sessionId=typeof raw.sessionId==="string"?raw.sessionId:"";
+    if(!message || message.length>500 || !sessionId) {
+      return NextResponse.json({error:"Se requiere mensaje y sessionId válido."},{status:400});
     }
-    const raw = body as Record<string, unknown>;
-    const message = typeof raw.message === "string" ? raw.message.trim() : "";
-    if (!message || message.length > 500) return NextResponse.json({ error: "El mensaje debe tener entre 1 y 500 caracteres" }, { status: 400 });
-    // Mantener el mensaje original para guardas de seguridad y trazabilidad.
-    // Solo las transcripciones del navegador se normalizan; Twilio queda intacto.
-    const interpretedMessage = raw.browserVoice === true ? normalizeVoiceTranscript(message) : message;
-    const cart = sanitizeCart(raw.cart);
-    // v0.9: en el navegador con proveedor OpenAI, interpretar un PLAN de
-    // operaciones y validarlo atómicamente en el servidor. No se utiliza
-    // para Twilio ni altera la ruta telefónica anterior.
-    const intelligentBrowser = raw.telephoneMode !== true &&
-      process.env.ORDERVOICE_PROVIDER === "openai";
-    if (intelligentBrowser) {
-      // La app puede estar expuesta por ngrok para Twilio: bloquear peticiones
-      // externas al motor OpenAI de pruebas para evitar consumo abusivo.
-      const localhost = (hostname: string) =>
-        hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]";
-      const target = new URL(request.url);
-      const forwarded = request.headers.get("x-forwarded-host")?.split(",")[0]?.trim();
-      const forwardedHostname = forwarded ? new URL("http://" + forwarded).hostname : null;
-      if (!localhost(target.hostname) || (forwardedHostname && !localhost(forwardedHostname))) {
-        return NextResponse.json({ error: "El motor OpenAI de pruebas solo está disponible en localhost." }, { status: 403 });
-      }
-      const origin = request.headers.get("origin");
-      if (origin) {
-        try {
-          if (new URL(origin).host !== target.host) {
-            return NextResponse.json({ error: "Origen no autorizado." }, { status: 403 });
-          }
-        } catch {
-          return NextResponse.json({ error: "Origen inválido." }, { status: 403 });
-        }
-      }
-      if (!process.env.OPENAI_API_KEY) {
-        return NextResponse.json({ error: "Falta OPENAI_API_KEY para el motor inteligente." }, { status: 503 });
-      }
-      const history = Array.isArray(raw.history) ? raw.history.slice(-8)
-        .filter((entry): entry is Record<string, unknown> => !!entry && typeof entry === "object")
-        .filter((entry) => (entry.role === "user" || entry.role === "assistant") && typeof entry.text === "string")
-        .map((entry) => ({
-          role: entry.role as "user" | "assistant",
-          text: String(entry.text).slice(0, 300)
-        })) : [];
-      try {
-        const interpretStarted = performance.now();
-        const plan = await understandOrderPlan(interpretedMessage, cart, history);
-        const result = applyOrderPlan(cart, plan, message);
-        const order = result.confirmed
-          ? { id: crypto.randomUUID().slice(0, 8).toUpperCase(),
-              createdAt: new Date().toISOString(), items: cart, totalCents: calculateTotal(cart) }
-          : undefined;
-        const interpretMs = Math.round(performance.now() - interpretStarted);
-        const serverMs = Math.round(performance.now() - startedAt);
-        const response = NextResponse.json({
-          ...result, order, mode: "ia", pending: null,
-          diagnostics: { intent: plan.intent, operations: plan.operations, needsClarification: plan.needsClarification },
-          metrics: { interpretMs, serverMs }
-        });
-        response.headers.set("Cache-Control", "no-store");
-        response.headers.set("Server-Timing", `interpret;dur=${interpretMs}, total;dur=${serverMs}`);
-        return response;
-      } catch (cause) {
-        // Registrar el tipo y estado de la falla SIN imprimir la clave,
-        // las transcripciones ni la información privada del usuario.
-        const apiError = cause && typeof cause === "object" ? cause as {
-          status?: unknown; code?: unknown; type?: unknown; name?: unknown; message?: unknown
-        } : {};
-        const status = typeof apiError.status === "number" ? apiError.status : null;
-        const code = typeof apiError.code === "string" ? apiError.code : null;
-        const errorName = typeof apiError.name === "string" ? apiError.name : "Error";
-        // El mensaje puede indicar qué parámetro rechazó OpenAI; se redactan
-        // valores con apariencia de token antes de imprimirlo en desarrollo.
-        const details = typeof apiError.message === "string"
-          ? apiError.message.slice(0, 450).replace(/sk-[A-Za-z0-9_-]+/g, "[CLAVE_OCULTA]")
-          : "";
-        console.error("[OrderVoice IA] Error interpretando pedido:", {
-          model: process.env.ORDERVOICE_INTENT_MODEL || "gpt-6.1-sol",
-          status, code, name: errorName, details
-        });
-        const explanation = status === 401
-          ? "La API rechazó tu clave (HTTP 401). Verifica OPENAI_API_KEY en .env.local."
-          : status === 403
-            ? "La clave API no tiene permiso para Responses (HTTP 403), o tu proyecto no tiene acceso al modelo. Activa Request para Responses (/v1/responses) en OpenAI Platform."
-            : status === 404
-              ? "El modelo de interpretación no está disponible para este proyecto (HTTP 404). Comprueba ORDERVOICE_INTENT_MODEL."
-              : status === 429
-                ? "Se alcanzó un límite de uso o créditos de OpenAI (HTTP 429). Revisa los límites y el saldo de la API."
-                : status === 400
-                  ? "OpenAI rechazó la configuración o el formato de la petición (HTTP 400). Revisa el detalle en la terminal de Next.js."
-                  : errorName === "APIConnectionTimeoutError" || errorName === "TimeoutError"
-                    ? "La IA tardó demasiado en responder. Revisa la conexión o usa un modelo más rápido."
-                    : "No se pudo interpretar el pedido. Revisa el detalle del error en la terminal de Next.js.";
-        return NextResponse.json({
-          error: explanation + " Tu carrito no se modificó.",
-          diagnostic: { status, code, name: errorName }
-        }, { status: 502 });
-      }
+    const mono=service();
+    const current=await mono.getSession(sessionId);
+    if(current.status!=="abierta")return NextResponse.json({error:"Esta sesión ya está confirmada."},{status:409});
+    const cart=sanitizeCart(current.items.map((item:{productId:string;quantity:number})=>({
+      productId:item.productId,quantity:item.quantity
+    })));
+    const normalized=raw.browserVoice===true?normalizeVoiceTranscript(message):message;
+    const pending=sanitizePending(raw.pending);
+    const pizzaTurn=advancePizzaConversation(normalized,pending,cart);
+    const command=guardDestructiveIntent(normalized,
+      pizzaTurn?.command ?? fastUnderstand(normalized) ?? demoUnderstand(normalized));
+    const evaluation=applyCommand(cart,command);
+    let newPending=pizzaTurn?.pending??pending;
+    if(command.action==="confirm" || command.action==="clear")newPending=null;
+    let actual=current;
+    let order;
+    let reply=evaluation.reply;
+    if(evaluation.confirmed) {
+      order=await mono.confirmSession(sessionId,{confirmar:true});
+      reply=`Confirmé tu pedido de ${formatUSD(order.totalCents)}. Es una demostración; no se envía a una cocina real.`;
+    } else if(command.action==="total") {
+      reply=current.items.length
+        ? `El total actual es ${formatUSD(current.totalCents)}. ¿Deseas algo más?`
+        : "Tu carrito está vacío. ¿Qué deseas pedir?";
+    } else if(command.action==="clear" ||
+      (command.action!=="question" && JSON.stringify(cart)!==JSON.stringify(evaluation.cart))) {
+      actual=await mono.syncCart(sessionId,evaluation.cart);
+      reply=command.action==="replace"
+        ? `Realicé el cambio. Total actual: ${formatUSD(actual.totalCents)}. ¿Deseas algo más?`
+        : command.action==="remove"
+        ? `Quité los productos indicados. Total actual: ${formatUSD(actual.totalCents)}.`
+        : command.action==="clear"
+        ? "Vacié el carrito. ¿Qué deseas pedir ahora?"
+        : `Añadí los productos. Total actual: ${formatUSD(actual.totalCents)}. ¿Deseas algo más?`;
     }
-    // Evita que el modelo local agote los 15 s permitidos a una llamada por Twilio.
-    const telephoneMode = raw.telephoneMode === true;
-    // Un pedido incompleto mantiene sus campos pendientes entre mensajes.
-    // El motor determinista resuelve aclaraciones antes de consultar al modelo.
-    const incomingPending = sanitizePending(raw.pending);
-    const interpretationStartedAt = performance.now();
-    const pizzaTurn = advancePizzaConversation(interpretedMessage, incomingPending, cart);
-    const fastCommand = pizzaTurn ? null : fastUnderstand(interpretedMessage);
-    let pending = pizzaTurn ? pizzaTurn.pending : incomingPending;
-    const configuredProvider = process.env.ORDERVOICE_PROVIDER ?? "ollama";
-    let mode: "ollama" | "demo" | "ia" | "local" = "demo";
-    let notice: string | undefined;
-    let command: Command;
-    if (pizzaTurn) {
-      command = pizzaTurn.command;
-      mode = "local";
-    } else if (fastCommand) {
-      command = fastCommand;
-      mode = "local";
-    } else if (configuredProvider === "demo") {
-      command = demoUnderstand(interpretedMessage);
-    } else if (configuredProvider === "openai" && process.env.OPENAI_API_KEY) {
-      command = await understandWithAI(interpretedMessage, cart, raw.history);
-      mode = "ia";
-    } else {
-      const history = Array.isArray(raw.history) ? raw.history.slice(-4)
-        .filter((entry): entry is Record<string, unknown> => !!entry && typeof entry === "object")
-        .filter((entry) => (entry.role === "user" || entry.role === "assistant") && typeof entry.text === "string")
-        .map((entry) => ({ role: entry.role as "user" | "assistant", text: String(entry.text).slice(0, 250) })) : [];
-      try {
-        command = await understandWithOllama(interpretedMessage, cart, history, telephoneMode ? 4_500 : 90_000);
-        mode = "ollama";
-      } catch (error) {
-        console.warn("Ollama local no disponible; modo demo:", error);
-        command = demoUnderstand(message);
-        notice = "Ollama no respondió. Estoy usando las reglas básicas de demostración; no se ha enviado información a servicios de pago.";
-      }
-    }
-    const interpretMs = Math.round(performance.now() - interpretationStartedAt);
-    const safeCommand = guardDestructiveIntent(message, command);
-    if (safeCommand.action === "clear" || safeCommand.action === "confirm") pending = null;
-    const result = applyCommand(cart, safeCommand);
-    let order: ConfirmedOrder | undefined;
-    if (result.confirmed) {
-      order = { id: crypto.randomUUID().slice(0, 8).toUpperCase(), createdAt: new Date().toISOString(), items: cart, totalCents: calculateTotal(cart) };
-    }
-    const serverMs = Math.round(performance.now() - startedAt);
-    const response = NextResponse.json({
-      ...result, order, mode, notice, pending,
-      metrics: { interpretMs, serverMs }
-    });
-    response.headers.set("Server-Timing", `interpret;dur=${interpretMs}, total;dur=${serverMs}`);
-    response.headers.set("Cache-Control", "no-store");
-    return response;
-  } catch (error) {
-    console.error("/api/chat:", error);
-    return NextResponse.json({ error: "No se pudo procesar el mensaje. Comprueba la conexión y la configuración de tu API." }, { status: 500 });
+    const ms=Math.round(performance.now()-started);
+    return NextResponse.json({
+      reply,
+      cart:order?[]:actual.items.map((item:{productId:string;quantity:number})=>({
+        productId:item.productId,quantity:item.quantity
+      })),
+      order,
+      pending:newPending,
+      mode:"local",
+      metrics:{interpretMs:ms,serverMs:ms},
+      notice:undefined
+    },{headers:{"Cache-Control":"no-store"}});
+  }catch(error) {
+    const response=failure(error);
+    const raw=await response.json() as {error?:{message?:string}};
+    return NextResponse.json({error:raw.error?.message??"No se pudo procesar el pedido."},
+      {status:response.status});
   }
 }
