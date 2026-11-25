@@ -34,10 +34,21 @@ assert.equal(fastUnderstand("Confirmo el pedido").action, "confirm");
 assert.equal(fastUnderstand("No confirmo el pedido"), null);
 assert.equal(fastUnderstand("Vacía el carrito").action, "clear");
 assert.equal(fastUnderstand("No vacíes el carrito"), null);
-for (const message of ["No, con eso estaría todo.", "Con eso sería todo", "Ya no quiero nada más", "No, gracias", "Nada más"]) {
+for (const message of [
+  "No, con eso estaría todo.", "Con eso sería todo", "Ya no quiero nada más",
+  "No, gracias", "Nada más", "No quiero pedir, ya no quiero pedir nada más.",
+  "No quiero pedir nada más", "Ya no quiero pedir más", "No deseo agregar nada más",
+  "Quiero pedir nada más, ya quiero.", "Eso es todo", "No quiero pedir", "Listo"
+]) {
   const cmd = fastUnderstand(message);
   assert.equal(cmd?.action, "question", message);
   assert.match(cmd.answer, /confirmo mi pedido/i, message);
+  const unchanged = engine.applyCommand(cart, cmd);
+  assert.deepEqual(unchanged.cart, cart, message);
+  assert.equal(unchanged.confirmed, false, message);
+}
+for (const message of ["Quiero una pizza pepperoni familiar, nada más", "Quiero una gaseosa nada más", "No confirmo mi pedido", "No quiero una pizza"]) {
+  assert.equal(fastUnderstand(message), null, "No marcar como cierre automático: " + message);
 }
 assert.equal(fastUnderstand("¿Cuánto cuesta la hawaiana familiar?").action, "question");
 assert.match(fastUnderstand("¿Cuánto cuesta la hawaiana familiar?").answer, /15,00|15\.00/);
