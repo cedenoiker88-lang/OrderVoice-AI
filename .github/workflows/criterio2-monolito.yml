@@ -1,0 +1,52 @@
+name: Criterio 2 - Monolito OrderVoice AI
+on:
+  push:
+    branches: [dev/criterio2-monolito]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ordervoice
+          POSTGRES_PASSWORD: ordervoice_test_only
+          POSTGRES_DB: ordervoice_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ordervoice -d ordervoice_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://ordervoice:ordervoice_test_only@localhost:5432/ordervoice_test
+      ORDERVOICE_BROWSER_STT_PROVIDER: disabled
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      # npm install actualiza el lock heredado al incorporar el driver pg.
+      - name: Instalar dependencias
+        run: npm install --no-audit --no-fund
+      - name: Verificar tipos y pruebas de reglas sin APIs externas
+        run: |
+          npm run typecheck
+          npm run test:monolith
+          npm run test:plan
+          npm run test:handsfree
+          npm run test:voice:currency
+      - name: Crear tablas y menú en PostgreSQL
+        run: npm run db:init
+      - name: Levantar el monolito
+        run: |
+          npm run dev > /tmp/ordervoice-next.log 2>&1 &
+      - name: Ejecutar pruebas HTTP de extremo a extremo
+        run: |
+          npm run test:monolith:http || (cat /tmp/ordervoice-next.log && exit 1)
