@@ -1,11 +1,15 @@
-node_modules
-.next
-out
-.env
-.env.local
-.env.*.local
+# Dependencias y compilaciones locales
+node_modules/
+.next/
+out/
+*.tsbuildinfo
 *.log
 .DS_Store
 
-# Vista previa de voz generada con OpenAI (solo local)
+# Nunca publicar claves privadas ni URL con contraseña
+.env
+.env.local
+.env.*.local
+
+# Residuos locales de prototipos antiguos conservados solo en el equipo
 .ordervoice-cache/
