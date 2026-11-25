@@ -34,6 +34,11 @@ jobs:
           cache: npm
       - name: Instalar dependencias
         run: npm install --no-audit --no-fund
+      # Auditoría temporal de reproducibilidad: exportar el lock limpio
+      # (sin credenciales) para incorporarlo al repositorio.
+      - name: Exportar lockfile sincronizado
+        run: |
+          node -e 'const b=require("fs").readFileSync("package-lock.json").toString("base64");for(let i=0;i<b.length;i+=2000)console.log("LOCKPART:"+Math.floor(i/2000)+":"+b.slice(i,i+2000))'
       - name: Ejecutar pruebas sin servicios externos
         run: npm test
       - name: Verificar build de producción
