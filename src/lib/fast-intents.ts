@@ -64,8 +64,12 @@ export function fastUnderstand(message: string): Command | null {
   if (/^(?:hola|buenas|buenos dias|buenas tardes|buenas noches)$/.test(normalize(message))) {
     return command("question", [], "¡Hola! Estoy lista para ayudarte con tu pedido. ¿Qué pizza te gustaría?");
   }
-  if (/^(?:no gracias|nada mas|eso es todo)$/.test(text)) {
-    return command("question", [], "Perfecto. ¿Deseas confirmar tu pedido? Para hacerlo, di: Confirmo el pedido.");
+  // "No, con eso estaría todo" significa no añadir más productos.
+  // No confirmar automáticamente: CU-04 exige una confirmación explícita.
+  if (/^(?:(?:no|ya) )?(?:con eso (?:estaria|seria) todo|eso (?:es|seria|estaria) todo|con eso esta bien)$/.test(text) ||
+      /^(?:ya )?no (?:quiero|deseo|necesito) nada mas$/.test(text) ||
+      /^(?:no gracias|nada mas|seria todo|ya seria todo|es todo)$/.test(text)) {
+    return command("question", [], "Perfecto, no agregaré nada más. Para guardar tu pedido, di: Confirmo mi pedido.");
   }
 
 
