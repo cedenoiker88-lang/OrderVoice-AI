@@ -66,7 +66,8 @@ Usuario / navegador
 
 - [Contrato API OpenAPI 3.0](docs/openapi.yaml) — rutas, cuerpos, respuestas, errores.
 - [Arquitectura y trazabilidad de casos de uso](docs/ARQUITECTURA_C2.md).
-- [Pruebas y guion de exposición](docs/GUIA_C2_EXPOSICION.md).
+- [Guía reproducible para el jueves](docs/GUIA_C2_EXPOSICION.md).
+- [Preguntas y guion para defender el monolito](docs/PREPARACION_EXPOSICION.md).
 - [Bitácora de incrementos y cambios](docs/bitacora.md).
 - [Pruebas de dominio](tests/monolith.test.mjs) y [prueba REST + PostgreSQL](scripts/smoke-monolith.mjs).
 - [Validación automática GitHub Actions](.github/workflows/criterio2-monolito.yml).
