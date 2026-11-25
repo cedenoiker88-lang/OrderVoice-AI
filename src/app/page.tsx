@@ -90,6 +90,7 @@ export default function Home() {
   const sttAbortRef = useRef<AbortController | null>(null);
   const recordedChunksRef = useRef<Blob[]>([]);
   const handsFreeRef = useRef<BrowserHandsFreeSession | null>(null);
+  const dbSessionIdRef = useRef<string | null>(null);
 
 
   useEffect(() => {
@@ -458,12 +459,29 @@ export default function Home() {
     messagesRef.current = [...previousMessages, { role: "user", text: message }];
     setMessages(messagesRef.current);
     try {
+      // La voz ya no envía el carrito como fuente de verdad.
+      // Primero creamos una sesión real en PostgreSQL y conservamos su UUID.
+      if (!dbSessionIdRef.current) {
+        const created = await fetch("/api/sesiones", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: "{}",
+          signal
+        });
+        const body = await created.json() as {sesion?: {id: string}; error?: {message?: string}};
+        if (!created.ok || !body.sesion?.id) {
+          throw new Error(body.error?.message || "No se pudo abrir una sesión en PostgreSQL.");
+        }
+        dbSessionIdRef.current = body.sesion.id;
+      }
+      if (signal?.aborted) return undefined;
       const requestStartedAt = performance.now();
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           message,
+          sessionId: dbSessionIdRef.current,
           browserVoice,
           cart: cartRef.current,
           pending: pendingRef.current,
@@ -491,6 +509,7 @@ export default function Home() {
       setMessages(messagesRef.current);
       if (!skipSpeech) say(data.reply, voiceRef.current || forceSpeak);
       if (data.order) {
+        dbSessionIdRef.current = null;
         setOrders((previous) => {
           const updated = [data.order!, ...previous].slice(0, 12);
           try { localStorage.setItem("ordervoice:demo-orders", JSON.stringify(updated)); } catch { /* almacenamiento deshabilitado */ }
@@ -537,6 +556,7 @@ export default function Home() {
   }
 
   function reset() {
+    dbSessionIdRef.current = null;
     handsFreeRef.current?.stop();
     if (voiceRef.current) stopVoiceSession();
     pendingRef.current = null;
@@ -559,7 +579,7 @@ export default function Home() {
   return (
     <div className="shell">
       <header className="header">
-        <div className="brand"><div className="brandmark">◉</div><div><strong>OrderVoice <span>AI</span></strong><small>Panel de pruebas · v1.0 voz continua</small></div></div>
+        <div className="brand"><div className="brandmark">◉</div><div><strong>OrderVoice <span>AI</span></strong><small>Criterio 2 · Monolito propio y voz continua</small></div></div>
         <div className="header-right"><span className="status-dot" /><span>Servidor de desarrollo</span><span className={`mode mode-${mode}`}>{mode === "ollama" ? "OLLAMA LOCAL" : mode === "ia" ? "IA ACTIVADA" : mode === "local" ? "REGLAS LOCALES" : mode === "demo" ? "MODO DEMO" : "MODO POR DETECTAR"}</span></div>
       </header>
 
@@ -567,7 +587,7 @@ export default function Home() {
 
       <main className="dashboard">
         <section className="panel chat-panel" aria-label="Asistente de pedidos">
-          <div className="panel-heading"><div><h2>Asistente de pedidos</h2><p>Chat de simulación · Sin llamadas reales</p></div><button className="secondary reset" onClick={reset} disabled={busy || recording || transcribing}>↻ Reiniciar</button></div>
+          <div className="panel-heading"><div><h2>Asistente de pedidos</h2><p>Chat de simulación · Persistencia PostgreSQL · Sin llamadas reales</p></div><button className="secondary reset" onClick={reset} disabled={busy || recording || transcribing}>↻ Reiniciar</button></div>
           <div className="conversation" ref={conversationRef} role="log" aria-live="polite">
             {messages.map((message, index) => <div className={`message ${message.role}`} key={index}><span className="message-avatar">{message.role === "assistant" ? "✦" : "TÚ"}</span><div className="message-body"><span className="speaker">{message.role === "assistant" ? "OrderVoice" : "Cliente"}</span><p>{message.text}</p></div></div>)}
             {busy && <div className="thinking">OrderVoice está procesando tu pedido…</div>}
@@ -591,8 +611,8 @@ export default function Home() {
             </span>
           </div>
           <div className="handsfree-notice">
-            OpenAI transcribe cada frase detectada y procesa el pedido (puede generar cargos).
-            No se utiliza Twilio. Puedes finalizar la conversación en cualquier momento.
+            OpenAI solo transcribe la voz; nuestro motor local interpreta y PostgreSQL guarda pedidos.
+            No se usa Twilio ni OpenAI para interpretar pedidos. Puedes finalizar en cualquier momento.
           </div>
           {lastTranscript && <div className="stt-result" role="status">
             <strong>Texto reconocido por la API:</strong> {lastTranscript}
