@@ -18,10 +18,11 @@ function command(action: Command["action"], items: Command["items"] = [], answer
 }
 
 export function fastUnderstand(message: string): Command | null {
-  // Cortesía común en dictado. Nunca quitar negaciones ni la pregunta central.
-  const text = normalize(message)
+  // Cortesía común en dictado. Preservar "no gracias": es un cierre de turno.
+  const original = normalize(message);
+  const text = (original === "no gracias" ? original : original
     .replace(/^(?:(?:hola|buenas|buenos dias|buenas tardes|buenas noches|oye|disculpa|por favor)[ ,]*)+/, "")
-    .replace(/(?: por favor| porfa| gracias)$/, "").trim();
+    .replace(/(?: por favor| porfa| gracias)$/, "")).trim();
 
   if (/^(?:cuanto (?:es|cuesta|sale|llevo|debo|pago|tengo que pagar)(?: (?:en total|el total|todo|el pedido|mi pedido|la cuenta))?|cuanto seria(?: en total)?|cuanto voy a pagar|cuanto es la cuenta|cuanto va la cuenta|en cuanto va (?:la cuenta|el pedido)|cual es (?:el )?total(?: del pedido)?|dime (?:el )?total|me dices (?:el )?total|me puedes decir (?:el )?total|total(?: del pedido)?|precio total)$/.test(text)) {
     return command("total");
