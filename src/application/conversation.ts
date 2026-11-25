@@ -1,4 +1,5 @@
-import { sanitizeCart, formatUSD, productById, type CartItem } from "@/lib/menu";
+import { sanitizeCart, formatUSD, productById } from "@/lib/menu";
+import { DomainError } from "./domain.js";
 import { advancePizzaConversation, sanitizePending } from "@/lib/pizza-dialogue";
 import { fastUnderstand } from "@/lib/fast-intents";
 import { demoUnderstand, guardDestructiveIntent, applyCommand } from "@/lib/order-engine";
@@ -28,12 +29,12 @@ export async function processConversation(
   const message = typeof raw.message === "string" ? raw.message.trim() : "";
   const sessionId = typeof raw.sessionId === "string" ? raw.sessionId : "";
   if (!message || message.length > 500 || !sessionId) {
-    throw new Error("Se requiere mensaje válido y sessionId.");
+    throw new DomainError(400, "MENSAJE_INVALIDO", "Se requiere mensaje válido y sessionId.");
   }
 
   const current = await monolith.getSession(sessionId);
   if (current.status !== "abierta") {
-    return { status: 409, data: { error: "Esta sesión ya está confirmada." } };
+    throw new DomainError(409, "SESION_CONFIRMADA", "Esta sesión ya está confirmada.");
   }
   const knownCart = sanitizeCart(current.items);
   const otherProducts = current.items.filter((line) => !productById(line.productId));
